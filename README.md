@@ -12,8 +12,13 @@ cd backend
 python -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
+export LLM_BASE_URL=http://localhost:8098
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+Backend předává OpenAI-compatible požadavky na lokální LLM přes `LLM_BASE_URL`
+(default `http://localhost:8098`). Volitelně lze nastavit `LLM_TIMEOUT_S` a
+`LLM_API_KEY`.
 
 ## Spuštění frontendu
 ```bash

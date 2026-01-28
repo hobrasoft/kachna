@@ -1,12 +1,24 @@
+import os
 from datetime import datetime
 from typing import List, Optional
-from uuid import uuid4
 
-from fastapi import FastAPI
+import httpx
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 
 app = FastAPI(title="kachna-api", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.getenv("CORS_ALLOW_ORIGINS", "*").split(","),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:8097").rstrip("/")
+LLM_TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "60"))
+LLM_API_KEY = os.getenv("LLM_API_KEY")
 
 
 class ModelCard(BaseModel):
@@ -46,6 +58,29 @@ class ChatCompletionResponse(BaseModel):
     choices: List[ChatChoice]
 
 
+def _llm_headers() -> dict:
+    if not LLM_API_KEY:
+        return {}
+    return {"Authorization": f"Bearer {LLM_API_KEY}"}
+
+
+async def _forward_to_llm(path: str, payload: Optional[dict] = None) -> dict:
+    url = f"{LLM_BASE_URL}{path}"
+    try:
+        async with httpx.AsyncClient(timeout=LLM_TIMEOUT_S) as client:
+            if payload is None:
+                response = await client.get(url, headers=_llm_headers())
+            else:
+                response = await client.post(url, json=payload, headers=_llm_headers())
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"LLM request failed: {exc}") from exc
+
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"LLM error: {response.text}")
+
+    return response.json()
+
+
 @app.get("/health")
 async def health_check() -> dict:
     return {"status": "ok"}
@@ -53,19 +88,11 @@ async def health_check() -> dict:
 
 @app.get("/v1/models", response_model=ModelsResponse)
 async def list_models() -> ModelsResponse:
-    models = [
-        ModelCard(id="llama-local-7b"),
-        ModelCard(id="llama-local-13b"),
-    ]
-    return ModelsResponse(data=models)
+    data = await _forward_to_llm("/v1/models")
+    return ModelsResponse.model_validate(data)
 
 
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def create_chat_completion(payload: ChatCompletionRequest) -> ChatCompletionResponse:
-    last_message = payload.messages[-1].content if payload.messages else ""
-    reply = ChatMessage(role="assistant", content=f"Echo: {last_message}")
-    return ChatCompletionResponse(
-        id=f"chatcmpl-{uuid4().hex}",
-        model=payload.model,
-        choices=[ChatChoice(index=0, message=reply)],
-    )
+    data = await _forward_to_llm("/v1/chat/completions", payload.model_dump())
+    return ChatCompletionResponse.model_validate(data)
