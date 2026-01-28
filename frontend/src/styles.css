@@ -1,0 +1,107 @@
+:root {
+  color-scheme: dark;
+  font-family: "Inter", system-ui, sans-serif;
+  background-color: #0b0f14;
+  color: #f5f5f5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #0b0f14;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app__header {
+  padding: 24px 32px;
+  border-bottom: 1px solid #1f2937;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.app__header h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.app__chat {
+  flex: 1;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: radial-gradient(circle at top, #121826, #0b0f14 60%);
+}
+
+.message {
+  padding: 16px 20px;
+  border-radius: 12px;
+  max-width: 680px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+}
+
+.message--assistant {
+  background: #111827;
+  border: 1px solid #1f2937;
+}
+
+.message--user {
+  align-self: flex-end;
+  background: #1f2937;
+  border: 1px solid #334155;
+}
+
+.message__role {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.message__content {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.app__composer {
+  display: flex;
+  gap: 12px;
+  padding: 20px 32px 32px;
+  border-top: 1px solid #1f2937;
+  background: #0b0f14;
+}
+
+.app__composer input {
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid #1f2937;
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 12px 14px;
+  font-size: 15px;
+}
+
+.app__composer button {
+  border: none;
+  border-radius: 10px;
+  background: #2563eb;
+  color: white;
+  padding: 12px 18px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.app__composer button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
