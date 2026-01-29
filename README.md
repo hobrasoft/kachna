@@ -20,6 +20,9 @@ Backend předává OpenAI-compatible požadavky na lokální LLM přes `LLM_BASE
 (default `http://localhost:8098`). Volitelně lze nastavit `LLM_TIMEOUT_S` a
 `LLM_API_KEY`.
 
+Konfiguraci backendu lze zadat také v INI souboru (`~/.kachna.conf` nebo
+`/etc/kachna.conf`).
+
 ## Spuštění frontendu
 ```bash
 cd frontend
@@ -27,4 +30,6 @@ npm install
 npm run dev
 ```
 
-Frontend očekává API na `http://localhost:8000`. Lze změnit přes `VITE_API_URL`.
+Frontend očekává API na `http://localhost:8000`. Lze změnit přes `VITE_API_URL`
+nebo v konfiguračním souboru (`~/.kachna.conf` nebo `/etc/kachna.conf`) pomocí
+sekce `[frontend]` a klíče `api_url`.
