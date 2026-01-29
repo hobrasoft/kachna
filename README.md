@@ -23,6 +23,11 @@ Backend předává OpenAI-compatible požadavky na lokální LLM přes `LLM_BASE
 Konfiguraci backendu lze zadat také v INI souboru (`~/.kachna.conf` nebo
 `/etc/kachna.conf`).
 
+Pokud spouštíš server z kořene repa, můžeš použít:
+```bash
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
+
 ## Spuštění frontendu
 ```bash
 cd frontend
