@@ -38,3 +38,26 @@ class BackendConfig:
     def dbDatabase(cls) -> str:
         parser = cls._ensure_loaded()
         return parser.get("db", "database", fallback="kachna")
+
+    @classmethod
+    def corsAllowOrigins(cls) -> list[str]:
+        parser = cls._ensure_loaded()
+        value = parser.get("cors", "allow_origins", fallback="*")
+        origins = [item.strip() for item in value.split(",") if item.strip()]
+        return origins or ["*"]
+
+    @classmethod
+    def llmBaseUrl(cls) -> str:
+        parser = cls._ensure_loaded()
+        return parser.get("llm", "base_url", fallback="http://localhost:8097").rstrip("/")
+
+    @classmethod
+    def llmTimeoutSeconds(cls) -> float:
+        parser = cls._ensure_loaded()
+        return parser.getfloat("llm", "timeout_s", fallback=60.0)
+
+    @classmethod
+    def llmApiKey(cls) -> str | None:
+        parser = cls._ensure_loaded()
+        value = parser.get("llm", "api_key", fallback="").strip()
+        return value or None

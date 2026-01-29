@@ -1,4 +1,3 @@
-import os
 import re
 from datetime import datetime
 from typing import List, Optional
@@ -8,18 +7,19 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from app.config import BackendConfig
 
 app = FastAPI(title="kachna-api", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ALLOW_ORIGINS", "*").split(","),
+    allow_origins=BackendConfig.corsAllowOrigins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:8097").rstrip("/")
-LLM_TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "60"))
-LLM_API_KEY = os.getenv("LLM_API_KEY")
+LLM_BASE_URL = BackendConfig.llmBaseUrl()
+LLM_TIMEOUT_S = BackendConfig.llmTimeoutSeconds()
+LLM_API_KEY = BackendConfig.llmApiKey()
 
 SYSTEM_PROMPT = """Identita:
 Jsi virtuální asistentka pro firmu Hobrasoft.
