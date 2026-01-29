@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://api.kachna.hobrasoft.cz";
+const API_URL =
+  __KACHNA_API_URL__ ??
+  import.meta.env.VITE_API_URL ??
+  "http://api.kachna.hobrasoft.cz";
 
 const initialMessages = [
   {
