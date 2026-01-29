@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime
 from typing import List, Optional
 
@@ -33,6 +34,7 @@ Odpovídej pouze na konkrétní otázky bez informací navíc.
 Pokud není dotaz jasný, zeptej se na upřesnění.
 Snaž se poskytnout relevantní a užitečné informace na základě dostupných dat.
 Na otázku pošli jedinou odpověď, za odpovědí nevymýšlej další otázku.
+Odpovídej vždy jen v roli assistant, nikdy v roli user.
 
 Firma Hobrasoft:
 
@@ -61,6 +63,8 @@ Používané technologie:
 - správa linuxových serverů, gentoo, debian, strongswan, postfix, dovecot, shorewall
 - nepoužívá sudo, nano
 - používá vim
+
+Odpovídej česky. Nikdy neodpovídej anglicky, leda bys byla o angličtinu požádána.
 """
 
 
@@ -106,6 +110,10 @@ class SystemPromptProvider:
         return SYSTEM_PROMPT
 
 
+def _strip_llm_tags(text: str) -> str:
+    return re.sub(r"<\|.*?\|>", "", text)
+
+
 def _llm_headers() -> dict:
     if not LLM_API_KEY:
         return {}
@@ -129,6 +137,21 @@ async def _forward_to_llm(path: str, payload: Optional[dict] = None) -> dict:
     return response.json()
 
 
+def _sanitize_llm_response(data: dict) -> dict:
+    choices = data.get("choices")
+    if not isinstance(choices, list):
+        return data
+
+    for choice in choices:
+        message = choice.get("message")
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            message["content"] = _strip_llm_tags(content)
+    return data
+
+
 @app.get("/health")
 async def health_check() -> dict:
     return {"status": "ok"}
@@ -147,4 +170,5 @@ async def create_chat_completion(payload: ChatCompletionRequest) -> ChatCompleti
     messages = [system_message, *payload.messages]
     payload_with_prompt = payload.model_copy(update={"messages": messages})
     data = await _forward_to_llm("/v1/chat/completions", payload_with_prompt.model_dump())
+    data = _sanitize_llm_response(data)
     return ChatCompletionResponse.model_validate(data)

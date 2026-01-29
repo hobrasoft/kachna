@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+const API_URL = import.meta.env.VITE_API_URL ?? "http://api.kachna.hobrasoft.cz";
 
 const initialMessages = [
   {
     role: "assistant",
-    content: "Ahoj Petře, jsem Kachna UI. Na co se zeptáš?",
+    content: "Ahoj, jsem Kachna. Co chceš vědět?",
   },
 ];
 
