@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from app.config import BackendConfig
+from .config import BackendConfig
 
 app = FastAPI(title="kachna-api", version="0.1.0")
 app.add_middleware(
