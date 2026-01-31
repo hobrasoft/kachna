@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -17,9 +17,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-LLM_BASE_URL = BackendConfig.llmBaseUrl()
-LLM_TIMEOUT_S = BackendConfig.llmTimeoutSeconds()
-LLM_API_KEY = BackendConfig.llmApiKey()
+CHAT_BASE_URL = BackendConfig.chatBaseUrl()
+EMBEDDING_BASE_URL = BackendConfig.embeddingBaseUrl()
+CHAT_TIMEOUT_S = BackendConfig.chatTimeoutSeconds()
+EMBEDDING_TIMEOUT_S = BackendConfig.embeddingTimeoutSeconds()
+CHAT_API_KEY = BackendConfig.chatApiKey()
+EMBEDDING_API_KEY = BackendConfig.embeddingApiKey()
 
 SYSTEM_PROMPT = """Identita:
 Jsi virtuální asistentka pro firmu Hobrasoft.
@@ -105,6 +108,12 @@ class ChatCompletionResponse(BaseModel):
     choices: List[ChatChoice]
 
 
+class EmbeddingRequest(BaseModel):
+    model: str
+    input: Any
+    user: Optional[str] = None
+
+
 class SystemPromptProvider:
     def get_prompt(self) -> str:
         return SYSTEM_PROMPT
@@ -114,20 +123,26 @@ def _strip_llm_tags(text: str) -> str:
     return re.sub(r"<\|.*?\|>", "", text)
 
 
-def _llm_headers() -> dict:
-    if not LLM_API_KEY:
+def _llm_headers(api_key: str | None) -> dict:
+    if not api_key:
         return {}
-    return {"Authorization": f"Bearer {LLM_API_KEY}"}
+    return {"Authorization": f"Bearer {api_key}"}
 
 
-async def _forward_to_llm(path: str, payload: Optional[dict] = None) -> dict:
-    url = f"{LLM_BASE_URL}{path}"
+async def _forward_to_llm(
+    base_url: str,
+    path: str,
+    timeout_s: float,
+    api_key: str | None,
+    payload: Optional[dict] = None,
+) -> dict:
+    url = f"{base_url}{path}"
     try:
-        async with httpx.AsyncClient(timeout=LLM_TIMEOUT_S) as client:
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
             if payload is None:
-                response = await client.get(url, headers=_llm_headers())
+                response = await client.get(url, headers=_llm_headers(api_key))
             else:
-                response = await client.post(url, json=payload, headers=_llm_headers())
+                response = await client.post(url, json=payload, headers=_llm_headers(api_key))
     except httpx.RequestError as exc:
         raise HTTPException(status_code=502, detail=f"LLM request failed: {exc}") from exc
 
@@ -159,7 +174,7 @@ async def health_check() -> dict:
 
 @app.get("/v1/models", response_model=ModelsResponse)
 async def list_models() -> ModelsResponse:
-    data = await _forward_to_llm("/v1/models")
+    data = await _forward_to_llm(CHAT_BASE_URL, "/v1/models", CHAT_TIMEOUT_S, CHAT_API_KEY)
     return ModelsResponse.model_validate(data)
 
 
@@ -169,6 +184,24 @@ async def create_chat_completion(payload: ChatCompletionRequest) -> ChatCompleti
     system_message = ChatMessage(role="system", content=system_prompt)
     messages = [system_message, *payload.messages]
     payload_with_prompt = payload.model_copy(update={"messages": messages})
-    data = await _forward_to_llm("/v1/chat/completions", payload_with_prompt.model_dump())
+    data = await _forward_to_llm(
+        CHAT_BASE_URL,
+        "/v1/chat/completions",
+        CHAT_TIMEOUT_S,
+        CHAT_API_KEY,
+        payload_with_prompt.model_dump(),
+    )
     data = _sanitize_llm_response(data)
     return ChatCompletionResponse.model_validate(data)
+
+
+@app.post("/v1/embeddings")
+async def create_embeddings(payload: EmbeddingRequest) -> dict:
+    data = await _forward_to_llm(
+        EMBEDDING_BASE_URL,
+        "/v1/embeddings",
+        EMBEDDING_TIMEOUT_S,
+        EMBEDDING_API_KEY,
+        payload.model_dump(),
+    )
+    return data

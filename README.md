@@ -12,16 +12,26 @@ cd backend
 python -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
-export LLM_BASE_URL=http://localhost:8098
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Backend předává OpenAI-compatible požadavky na lokální LLM přes `LLM_BASE_URL`
-(default `http://localhost:8098`). Volitelně lze nastavit `LLM_TIMEOUT_S` a
-`LLM_API_KEY`.
+Backend předává OpenAI-compatible požadavky na lokální LLM.
 
 Konfiguraci backendu lze zadat také v INI souboru (`~/.kachna.conf` nebo
-`/etc/kachna.conf`).
+`/etc/kachna.conf`). Pro chat a embedding použij:
+```ini
+[chat]
+hostname = localhost
+port = 8097
+timeout = 30
+api-key =
+
+[embedding]
+hostname = localhost
+port = 8098
+timeout = 30
+api-key =
+```
 
 Pokud spouštíš server z kořene repa, můžeš použít:
 ```bash

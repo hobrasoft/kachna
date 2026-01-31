@@ -42,16 +42,34 @@ comment on column users.password is 'hash hesla uživatele';
 
 
 /*
+Seznam systémových promptů.
+Promptem je zde myšlena první zpráva s rolí "system" posílaná v konverzaci do LLM.
+Různé role mohou mít různé systémové prompty,
+jiný prompt pro účetního, jiný pro ředitele, jiný pro vedoucího směny atd
+*/
+create table system_prompts (
+    system_prompt   serial primary key,
+    name            text not null,
+   "text"           text not null
+);
+comment on table system_prompts is 'Seznam systémových promptů';
+comment on column system_prompts.system_prompt is 'identifikátor řádku';
+comment on column system_prompts.name is 'Jméno promptu, stručné označení';
+comment on column system_prompts."text" is 'Celý text promptu';
+
+
+/*
 Seznam rolí pro uživatele.
 Uživatel může mít více rolí.
 
 Role slouží k nastavení přístupových práv k různým tématům a funkcím v db
 */
 create table user_roles (
-    user_role   integer primary key,
-    abbr        text not null,
-    name        text not null,
-    admin       boolean not null default false
+    user_role       serial primary key,
+    system_prompt   integer not null references system_prompts(system_prompt) on update no action on delete no action,
+    abbr            text not null,
+    name            text not null,
+    admin           boolean not null default false
 );
 comment on table user_roles is 'Seznam rolí pro uživatele. Podle rolí se řídí přístupová práva k různým funkcím v DB a tématům';
 
@@ -207,7 +225,7 @@ create table topic_categories_has_policies (
 );
 comment on table topic_categories_has_policies is 'Vazba mezi rolí a kategorií tematu na politiku';
 comment on column topic_categories_has_policies.topic_category is 'identifikátor kategorie tématu';
-comment on column topic_categories_has_policies.user_role is 'identifikátor uživatelské roletématu';
+comment on column topic_categories_has_policies.user_role is 'identifikátor uživatelské role';
 comment on column topic_categories_has_policies.topic_policy is 'identifikátor politiky';
 
 
