@@ -229,6 +229,20 @@ class FunctionResponse(FunctionBase):
     function: int
 
 
+class FunctionQuestionBase(BaseModel):
+    function: int
+    text: str
+
+
+class FunctionQuestionUpdate(BaseModel):
+    function: Optional[int] = None
+    text: Optional[str] = None
+
+
+class FunctionQuestionResponse(FunctionQuestionBase):
+    function_question: int
+
+
 class LoginRole(BaseModel):
     user_role: int
     system_prompt: int
@@ -682,6 +696,82 @@ async def delete_topic(topic_id: int) -> dict:
     result = await DB.delete_topic(topic_id)
     if result.split()[-1] == "0":
         raise HTTPException(status_code=404, detail="Téma nenalezeno.")
+    return {"status": "ok"}
+
+
+@app.get("/v1/function-questions", response_model=List[FunctionQuestionResponse])
+async def list_function_questions() -> List[FunctionQuestionResponse]:
+    rows = await DB.list_function_questions()
+    return [
+        FunctionQuestionResponse(
+            function_question=row["function_question"],
+            function=row["function"],
+            text=row["text"],
+        )
+        for row in rows
+    ]
+
+
+@app.post("/v1/function-questions", response_model=FunctionQuestionResponse)
+async def create_function_question(
+    payload: FunctionQuestionBase,
+) -> FunctionQuestionResponse:
+    embedding_list = await _create_embedding(payload.text)
+    embedding_value = _vector_from_list(embedding_list)
+    row = await DB.create_function_question(
+        payload.function,
+        payload.text,
+        embedding_value,
+    )
+    row = _ensure_row(row, "Dotaz k funkci nebyl vytvořen.")
+    return FunctionQuestionResponse(
+        function_question=row["function_question"],
+        function=row["function"],
+        text=row["text"],
+    )
+
+
+@app.get("/v1/function-questions/{function_question_id}", response_model=FunctionQuestionResponse)
+async def get_function_question(function_question_id: int) -> FunctionQuestionResponse:
+    row = await DB.get_function_question(function_question_id)
+    row = _ensure_row(row, "Dotaz k funkci nenalezen.")
+    return FunctionQuestionResponse(
+        function_question=row["function_question"],
+        function=row["function"],
+        text=row["text"],
+    )
+
+
+@app.put("/v1/function-questions/{function_question_id}", response_model=FunctionQuestionResponse)
+async def update_function_question(
+    function_question_id: int,
+    payload: FunctionQuestionUpdate,
+) -> FunctionQuestionResponse:
+    current = await DB.get_function_question(function_question_id)
+    current = _ensure_row(current, "Dotaz k funkci nenalezen.")
+    function_id = payload.function if payload.function is not None else current["function"]
+    text_value = payload.text if payload.text is not None else current["text"]
+    embedding_list = await _create_embedding(text_value)
+    embedding_value = _vector_from_list(embedding_list)
+    row = await DB.update_function_question(
+        function_question_id,
+        function_id,
+        text_value,
+        embedding_value,
+    )
+    row = _ensure_row(row, "Dotaz k funkci nebyl upraven.")
+    return FunctionQuestionResponse(
+        function_question=row["function_question"],
+        function=row["function"],
+        text=row["text"],
+    )
+
+
+@app.delete("/v1/function-questions/{function_question_id}")
+async def delete_function_question(function_question_id: int) -> dict:
+    result = await DB.delete_function_question(function_question_id)
+    if result.split()[-1] == "0":
+        raise HTTPException(status_code=404, detail="Dotaz k funkci nenalezen.")
     return {"status": "ok"}
 
 

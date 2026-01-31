@@ -333,6 +333,68 @@ class Database:
     async def delete_topic(self, topic_id: int) -> str:
         return await self.execute("delete from topics where topic=$1", topic_id)
 
+    async def list_function_questions(self) -> list[asyncpg.Record]:
+        return await self.fetch(
+            """
+            select function_question, function, text
+              from functions_questions
+             order by function_question
+            """,
+        )
+
+    async def create_function_question(
+        self,
+        function_id: int,
+        text: str,
+        embedding_value: str,
+    ) -> asyncpg.Record | None:
+        return await self.fetchrow(
+            """
+            insert into functions_questions ("function", text, embedding)
+            values ($1, $2, $3::vector)
+            returning function_question, "function", text
+            """,
+            function_id,
+            text,
+            embedding_value,
+        )
+
+    async def get_function_question(self, function_question_id: int) -> asyncpg.Record | None:
+        return await self.fetchrow(
+            """
+            select function_question, "function", text
+              from functions_questions
+             where function_question=$1
+            """,
+            function_question_id,
+        )
+
+    async def update_function_question(
+        self,
+        function_question_id: int,
+        function_id: int,
+        text: str,
+        embedding_value: str,
+    ) -> asyncpg.Record | None:
+        return await self.fetchrow(
+            """
+            update functions_questions
+               set "function"=$1, text=$2, embedding=$3::vector
+             where function_question=$4
+             returning function_question, "function", text
+            """,
+            function_id,
+            text,
+            embedding_value,
+            function_question_id,
+        )
+
+    async def delete_function_question(self, function_question_id: int) -> str:
+        return await self.execute(
+            "delete from functions_questions where function_question=$1",
+            function_question_id,
+        )
+
     async def list_functions(self) -> list[asyncpg.Record]:
         return await self.fetch(
             """

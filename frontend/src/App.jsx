@@ -980,6 +980,186 @@ function TopicsSection({ apiUrl }) {
   );
 }
 
+function FunctionQuestionsSection({ apiUrl }) {
+  const [items, setItems] = useState([]);
+  const [functions, setFunctions] = useState([]);
+  const [form, setForm] = useState({
+    function_question: null,
+    function: "",
+    text: "",
+  });
+  const [view, setView] = useState("list");
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    setError("");
+    const response = await apiClient.get(apiUrl, "/v1/function-questions");
+    if (!response.ok) {
+      setError("Nepodařilo se načíst dotazy k funkcím.");
+      return;
+    }
+    setItems(await response.json());
+  };
+
+  const loadFunctions = async () => {
+    const response = await apiClient.get(apiUrl, "/v1/functions");
+    if (!response.ok) {
+      setError("Nepodařilo se načíst funkce.");
+      return;
+    }
+    setFunctions(await response.json());
+  };
+
+  useEffect(() => {
+    load();
+    loadFunctions();
+  }, [apiUrl]);
+
+  const handleAdd = () => {
+    setError("");
+    setForm({ function_question: null, function: "", text: "" });
+    setView("form");
+  };
+
+  const handleEdit = (item) => {
+    setError("");
+    setForm({
+      function_question: item.function_question,
+      function: item.function ?? "",
+      text: item.text ?? "",
+    });
+    setView("form");
+  };
+
+  const handleCancel = () => {
+    setError("");
+    setForm({ function_question: null, function: "", text: "" });
+    setView("list");
+  };
+
+  const handleSave = async (event) => {
+    event.preventDefault();
+    setError("");
+    const payload = {
+      function: Number(form.function),
+      text: form.text,
+    };
+    const response = form.function_question
+      ? await apiClient.put(
+          apiUrl,
+          `/v1/function-questions/${form.function_question}`,
+          payload,
+        )
+      : await apiClient.post(apiUrl, "/v1/function-questions", payload);
+    if (!response.ok) {
+      setError(
+        form.function_question
+          ? "Dotaz k funkci se nepodařilo upravit."
+          : "Dotaz k funkci se nepodařilo vytvořit.",
+      );
+      return;
+    }
+    await load();
+    handleCancel();
+  };
+
+  const handleDelete = async () => {
+    if (!form.function_question) {
+      return;
+    }
+    const response = await apiClient.del(
+      apiUrl,
+      `/v1/function-questions/${form.function_question}`,
+    );
+    if (!response.ok) {
+      setError("Dotaz k funkci se nepodařilo odstranit.");
+      return;
+    }
+    await load();
+    handleCancel();
+  };
+
+  const functionName = (functionId) =>
+    functions.find((item) => item.function === functionId)?.name ?? "-";
+
+  return (
+    <SectionCard title="Dotazy k funkcím">
+      {view === "list" ? (
+        <>
+          <div className="table__actions">
+            <button type="button" onClick={handleAdd}>
+              Přidat
+            </button>
+          </div>
+          {error && <div className="form__error">{error}</div>}
+          <div className="table">
+            <div className="table__row table__head">
+              <span>Funkce</span>
+              <span>Text dotazu</span>
+              <span>Akce</span>
+            </div>
+            {items.map((item) => (
+              <div className="table__row" key={item.function_question}>
+                <span>{functionName(item.function)}</span>
+                <span>{item.text}</span>
+                <div className="table__actions">
+                  <button type="button" onClick={() => handleEdit(item)}>
+                    Upravit
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <form className="form form--stack" onSubmit={handleSave}>
+          <label>
+            Funkce
+            <select
+              value={form.function}
+              onChange={(event) =>
+                setForm({ ...form, function: event.target.value })
+              }
+              required
+            >
+              <option value="" disabled>
+                Vyber funkci
+              </option>
+              {functions.map((item) => (
+                <option key={item.function} value={item.function}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Text dotazu
+            <textarea
+              value={form.text}
+              onChange={(event) => setForm({ ...form, text: event.target.value })}
+              required
+            />
+          </label>
+          {error && <div className="form__error">{error}</div>}
+          <div className="form__actions">
+            <button type="button" onClick={handleCancel}>
+              Zrušit
+            </button>
+            <button type="submit">Uložit</button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={!form.function_question}
+            >
+              Smazat
+            </button>
+          </div>
+        </form>
+      )}
+    </SectionCard>
+  );
+}
+
 function FunctionsSection({ apiUrl }) {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState({
@@ -1187,6 +1367,7 @@ function AdminPanel({ apiUrl }) {
       { key: "roles", label: "Role", component: RolesSection },
       { key: "topics", label: "Témata", component: TopicsSection },
       { key: "topic-categories", label: "Kategorie", component: TopicCategoriesSection },
+      { key: "function-questions", label: "Dotazy k funkcím", component: FunctionQuestionsSection },
       { key: "functions", label: "Funkce", component: FunctionsSection },
     ],
     [],
