@@ -21,14 +21,6 @@ const defaultChatModel = "local-model";
 const formatEmbedding = (embedding) =>
   Array.isArray(embedding) ? embedding.join(", ") : "";
 
-const parseEmbeddingInput = (value) =>
-  value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map(Number)
-    .filter((item) => !Number.isNaN(item));
-
 function SectionCard({ title, children }) {
   return (
     <section className="card">
@@ -824,9 +816,9 @@ function TopicsSection({ apiUrl }) {
   const [form, setForm] = useState({
     topic_category: "",
     text: "",
-    embedding: "",
   });
-  const [editing, setEditing] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [view, setView] = useState("list");
   const [error, setError] = useState("");
 
   const load = async () => {
@@ -843,7 +835,7 @@ function TopicsSection({ apiUrl }) {
     load();
   }, [apiUrl]);
 
-  const handleCreate = async (event) => {
+  const handleSave = async (event) => {
     event.preventDefault();
     setError("");
     const topicCategoryValue = Number(form.topic_category);
@@ -854,157 +846,142 @@ function TopicsSection({ apiUrl }) {
     const payload = {
       topic_category: topicCategoryValue,
       text: form.text,
-      embedding: parseEmbeddingInput(form.embedding),
     };
-    const response = await fetch(`${apiUrl}/v1/topics`, {
-      method: "POST",
-      headers: defaultHeaders,
-      body: JSON.stringify(payload),
-    });
+    const response = editingId
+      ? await fetch(`${apiUrl}/v1/topics/${editingId}`, {
+          method: "PUT",
+          headers: defaultHeaders,
+          body: JSON.stringify(payload),
+        })
+      : await fetch(`${apiUrl}/v1/topics`, {
+          method: "POST",
+          headers: defaultHeaders,
+          body: JSON.stringify(payload),
+        });
     if (!response.ok) {
-      setError("Téma se nepodařilo vytvořit.");
+      setError(
+        editingId
+          ? "Téma se nepodařilo upravit."
+          : "Téma se nepodařilo vytvořit.",
+      );
       return;
     }
-    setForm({ topic_category: "", text: "", embedding: "" });
+    setForm({ topic_category: "", text: "" });
+    setEditingId(null);
+    setView("list");
     await load();
   };
 
-  const handleDelete = async (topicId) => {
-    const response = await fetch(`${apiUrl}/v1/topics/${topicId}`, {
+  const handleDelete = async () => {
+    if (!editingId) {
+      return;
+    }
+    const response = await fetch(`${apiUrl}/v1/topics/${editingId}`, {
       method: "DELETE",
     });
     if (!response.ok) {
       setError("Téma se nepodařilo odstranit.");
       return;
     }
+    setForm({ topic_category: "", text: "" });
+    setEditingId(null);
+    setView("list");
     await load();
   };
 
-  const handleEditSave = async () => {
-    if (!editing) {
-      return;
-    }
-    const topicCategoryValue = Number(editing.topic_category);
-    if (!Number.isInteger(topicCategoryValue)) {
-      setError("Kategorie musí být číslo.");
-      return;
-    }
-    const payload = {
-      ...editing,
-      topic_category: topicCategoryValue,
-      embedding: parseEmbeddingInput(editing.embedding),
-    };
-    const response = await fetch(`${apiUrl}/v1/topics/${editing.topic}`, {
-      method: "PUT",
-      headers: defaultHeaders,
-      body: JSON.stringify(payload),
+  const handleCancel = () => {
+    setForm({ topic_category: "", text: "" });
+    setEditingId(null);
+    setError("");
+    setView("list");
+  };
+
+  const handleAdd = () => {
+    setForm({ topic_category: "", text: "" });
+    setEditingId(null);
+    setError("");
+    setView("form");
+  };
+
+  const handleEdit = (item) => {
+    setForm({
+      topic_category: item.topic_category ?? "",
+      text: item.text ?? "",
     });
-    if (!response.ok) {
-      setError("Téma se nepodařilo upravit.");
-      return;
-    }
-    setEditing(null);
-    await load();
+    setEditingId(item.topic);
+    setError("");
+    setView("form");
   };
 
   return (
     <SectionCard title="Správa témat">
-      <form className="form form--stack" onSubmit={handleCreate}>
-        <div className="form__row">
-          <input
-            type="number"
-            placeholder="Kategorie"
-            value={form.topic_category}
-            onChange={(event) =>
-              setForm({ ...form, topic_category: event.target.value })
-            }
-            required
-          />
-          <input
-            type="text"
-            placeholder="Embedding (čárkami)"
-            value={form.embedding}
-            onChange={(event) =>
-              setForm({ ...form, embedding: event.target.value })
-            }
-            required
-          />
-        </div>
-        <textarea
-          placeholder="Text tématu"
-          value={form.text}
-          onChange={(event) => setForm({ ...form, text: event.target.value })}
-          required
-        />
-        <button type="submit">Přidat</button>
-      </form>
-      {error && <div className="form__error">{error}</div>}
-      <div className="table">
-        <div className="table__row table__head">
-          <span>ID</span>
-          <span>Kategorie</span>
-          <span>Text</span>
-          <span>Embedding</span>
-          <span>Akce</span>
-        </div>
-        {items.map((item) =>
-          editing?.topic === item.topic ? (
-            <div className="table__row" key={item.topic}>
-              <span>{item.topic}</span>
-              <input
-                type="number"
-                value={editing.topic_category}
-                onChange={(event) =>
-                  setEditing({
-                    ...editing,
-                    topic_category: event.target.value,
-                  })
-                }
-              />
-              <input
-                type="text"
-                value={editing.text}
-                onChange={(event) =>
-                  setEditing({ ...editing, text: event.target.value })
-                }
-              />
-              <input
-                type="text"
-                value={editing.embedding}
-                onChange={(event) =>
-                  setEditing({ ...editing, embedding: event.target.value })
-                }
-              />
-              <div className="table__actions">
-                <button type="button" onClick={handleEditSave}>
-                  Uložit
-                </button>
-                <button type="button" onClick={() => setEditing(null)}>
-                  Zrušit
-                </button>
-              </div>
+      {view === "list" ? (
+        <>
+          <div className="table__actions">
+            <button type="button" onClick={handleAdd}>
+              Přidat
+            </button>
+          </div>
+          {error && <div className="form__error">{error}</div>}
+          <div className="table">
+            <div className="table__row table__head">
+              <span>ID</span>
+              <span>Kategorie</span>
+              <span>Text</span>
+              <span>Embedding</span>
+              <span>Akce</span>
             </div>
-          ) : (
-            <div className="table__row" key={item.topic}>
-              <span>{item.topic}</span>
-              <span>{item.topic_category}</span>
-              <span>{item.text}</span>
-              <span>{formatEmbedding(item.embedding)}</span>
-              <div className="table__actions">
-                <button type="button" onClick={() => setEditing({
-                  ...item,
-                  embedding: formatEmbedding(item.embedding),
-                })}>
-                  Upravit
-                </button>
-                <button type="button" onClick={() => handleDelete(item.topic)}>
-                  Smazat
-                </button>
+            {items.map((item) => (
+              <div className="table__row" key={item.topic}>
+                <span>{item.topic}</span>
+                <span>{item.topic_category}</span>
+                <span>{item.text}</span>
+                <span>{formatEmbedding(item.embedding)}</span>
+                <div className="table__actions">
+                  <button type="button" onClick={() => handleEdit(item)}>
+                    Upravit
+                  </button>
+                </div>
               </div>
-            </div>
-          ),
-        )}
-      </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <form className="form form--stack" onSubmit={handleSave}>
+          {editingId && <div className="form__info">ID tématu: {editingId}</div>}
+          <label>
+            Kategorie
+            <input
+              type="number"
+              value={form.topic_category}
+              onChange={(event) =>
+                setForm({ ...form, topic_category: event.target.value })
+              }
+              required
+            />
+          </label>
+          <label>
+            Text tématu
+            <textarea
+              value={form.text}
+              onChange={(event) =>
+                setForm({ ...form, text: event.target.value })
+              }
+              required
+            />
+          </label>
+          {error && <div className="form__error">{error}</div>}
+          <div className="form__actions">
+            <button type="button" onClick={handleCancel}>
+              Zrušit
+            </button>
+            <button type="submit">Uložit</button>
+            <button type="button" onClick={handleDelete} disabled={!editingId}>
+              Smazat
+            </button>
+          </div>
+        </form>
+      )}
     </SectionCard>
   );
 }
