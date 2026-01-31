@@ -29,7 +29,7 @@ comment on column versions.date is 'čas aplikace verze';
 Seznam uživatelů.
 */
 CREATE TABLE users (
-    "user"      integer primary key,
+    "user"      serial primary key,
     name        text not null,
     login       text not null,
     password    text not null
@@ -246,7 +246,7 @@ comment on column topics.topic_category is 'vazba na tematickou kategorii';
 comment on column topics.text is 'příkladový text reprezentující dané téma';
 comment on column topics.embedding is 'embedding vzoru pro vyhodnocování podobnosti';
 
-insert into versions values (0);
+insert into versions values (1);
 
 commit;
 

@@ -1,0 +1,117 @@
+/**
+@page api_api Kachna API
+
+@section api_overview Přehled
+API slouží k přihlášení a správě dat v tabulkách uživatelů, rolí, témat, kategorií a funkcí.
+Všechny odpovědi i požadavky jsou ve formátu JSON.
+
+@section api_auth Přihlášení
+@subsection api_login POST /v1/login
+Přihlášení vrací data uživatele a jeho role.
+
+@par Request
+@code{.json}
+{
+  "login": "admin",
+  "password": "tajneheslo"
+}
+@endcode
+
+@par Response
+@code{.json}
+{
+  "user": 1,
+  "name": "Admin",
+  "login": "admin",
+  "roles": [
+    {
+      "user_role": 1,
+      "system_prompt": 1,
+      "abbr": "ADM",
+      "name": "Administrátor",
+      "admin": true
+    }
+  ]
+}
+@endcode
+
+@section api_users Uživatelé
+@subsection api_users_list GET /v1/users
+Vrací seznam uživatelů (bez hesel).
+
+@subsection api_users_create POST /v1/users
+Vytvoří uživatele.
+
+@subsection api_users_detail GET /v1/users/{user_id}
+Vrací detail uživatele.
+
+@subsection api_users_update PUT /v1/users/{user_id}
+Upraví uživatele.
+
+@subsection api_users_delete DELETE /v1/users/{user_id}
+Odstraní uživatele.
+
+@section api_roles Role
+@subsection api_roles_list GET /v1/user-roles
+Seznam rolí.
+
+@subsection api_roles_create POST /v1/user-roles
+Vytvoření role.
+
+@subsection api_roles_detail GET /v1/user-roles/{role_id}
+Detail role.
+
+@subsection api_roles_update PUT /v1/user-roles/{role_id}
+Úprava role.
+
+@subsection api_roles_delete DELETE /v1/user-roles/{role_id}
+Smazání role.
+
+@section api_topic_categories Kategorie témat
+@subsection api_topic_categories_list GET /v1/topic-categories
+Seznam kategorií témat.
+
+@subsection api_topic_categories_create POST /v1/topic-categories
+Vytvoření kategorie.
+
+@subsection api_topic_categories_detail GET /v1/topic-categories/{topic_category}
+Detail kategorie.
+
+@subsection api_topic_categories_update PUT /v1/topic-categories/{topic_category}
+Úprava kategorie.
+
+@subsection api_topic_categories_delete DELETE /v1/topic-categories/{topic_category}
+Smazání kategorie.
+
+@section api_topics Témata
+@subsection api_topics_list GET /v1/topics
+Seznam témat.
+
+@subsection api_topics_create POST /v1/topics
+Vytvoření tématu s embeddingem.
+
+@subsection api_topics_detail GET /v1/topics/{topic_id}
+Detail tématu.
+
+@subsection api_topics_update PUT /v1/topics/{topic_id}
+Úprava tématu.
+
+@subsection api_topics_delete DELETE /v1/topics/{topic_id}
+Smazání tématu.
+
+@section api_functions Funkce
+@subsection api_functions_list GET /v1/functions
+Seznam funkcí.
+
+@subsection api_functions_create POST /v1/functions
+Vytvoření funkce.
+
+@subsection api_functions_detail GET /v1/functions/{function_id}
+Detail funkce.
+
+@subsection api_functions_update PUT /v1/functions/{function_id}
+Úprava funkce.
+
+@subsection api_functions_delete DELETE /v1/functions/{function_id}
+Smazání funkce.
+*/

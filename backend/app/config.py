@@ -40,6 +40,16 @@ class BackendConfig:
         return parser.get("db", "database", fallback="kachna")
 
     @classmethod
+    def dbUser(cls) -> str:
+        parser = cls._ensure_loaded()
+        return parser.get("db", "user", fallback="kachna")
+
+    @classmethod
+    def dbPassword(cls) -> str:
+        parser = cls._ensure_loaded()
+        return parser.get("db", "password", fallback="")
+
+    @classmethod
     def corsAllowOrigins(cls) -> list[str]:
         parser = cls._ensure_loaded()
         value = parser.get("cors", "allow_origins", fallback="*")

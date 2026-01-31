@@ -1,119 +1,1040 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const API_URL =
   __KACHNA_API_URL__ ??
   import.meta.env.VITE_API_URL ??
   "http://api.kachna.hobrasoft.cz";
 
-const initialMessages = [
-  {
-    role: "assistant",
-    content: "Ahoj, jsem Kachna. Co chceš vědět?",
-  },
-];
+const emptyUser = {
+  user: null,
+  name: "",
+  login: "",
+  roles: [],
+};
 
-function ChatMessage({ role, content }) {
+const defaultHeaders = {
+  "Content-Type": "application/json",
+};
+
+const formatEmbedding = (embedding) =>
+  Array.isArray(embedding) ? embedding.join(", ") : "";
+
+const parseEmbeddingInput = (value) =>
+  value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map(Number)
+    .filter((item) => !Number.isNaN(item));
+
+function SectionCard({ title, children }) {
   return (
-    <div className={`message message--${role}`}>
-      <div className="message__role">{role}</div>
-      <div className="message__content">{content}</div>
-    </div>
+    <section className="card">
+      <h2>{title}</h2>
+      {children}
+    </section>
   );
 }
 
-export default function App() {
-  const [messages, setMessages] = useState(initialMessages);
-  const [input, setInput] = useState("");
+function LoginForm({ onLogin }) {
+  const [login, setLogin] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-
-  const headerTitle = useMemo(() => "Kachna", []);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!input.trim() || isLoading) {
-      return;
-    }
-
-    const nextMessages = [
-      ...messages,
-      { role: "user", content: input.trim() },
-    ];
-
-    setMessages(nextMessages);
-    setInput("");
+    setError("");
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/v1/chat/completions`, {
+      const response = await fetch(`${API_URL}/v1/login`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "llama-local-7b",
-          messages: nextMessages,
-        }),
+        headers: defaultHeaders,
+        body: JSON.stringify({ login, password }),
       });
 
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+        throw new Error("Přihlášení selhalo.");
       }
 
       const data = await response.json();
-      const assistantMessage = data.choices?.[0]?.message;
-
-      setMessages((current) =>
-        assistantMessage
-          ? [...current, assistantMessage]
-          : current,
-      );
-    } catch (error) {
-      setMessages((current) => [
-        ...current,
-        {
-          role: "assistant",
-          content: `Chyba: ${error.message}`,
-        },
-      ]);
+      onLogin(data);
+    } catch (err) {
+      setError(err.message);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="app">
-      <header className="app__header">
-        <h1>{headerTitle}</h1>
-        <span>LLM UI</span>
-      </header>
+    <div className="login">
+      <div className="login__panel">
+        <h1>Kachna</h1>
+        <p>Přihlas se pro správu systému.</p>
+        <form className="form" onSubmit={handleSubmit}>
+          <label>
+            Login
+            <input
+              type="text"
+              value={login}
+              onChange={(event) => setLogin(event.target.value)}
+              placeholder="např. admin"
+              required
+            />
+          </label>
+          <label>
+            Heslo
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="••••••••"
+              required
+            />
+          </label>
+          {error && <div className="form__error">{error}</div>}
+          <button type="submit" disabled={isLoading}>
+            {isLoading ? "Ověřuji…" : "Přihlásit"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
 
-      <main className="app__chat">
-        {messages.map((message, index) => (
-          <ChatMessage
-            key={`${message.role}-${index}`}
-            role={message.role}
-            content={message.content}
-          />
-        ))}
-        {isLoading && (
-          <div className="message message--assistant">
-            <div className="message__role">assistant</div>
-            <div className="message__content">Přemýšlím…</div>
-          </div>
-        )}
-      </main>
+function UsersSection({ apiUrl }) {
+  const [items, setItems] = useState([]);
+  const [form, setForm] = useState({ name: "", login: "", password: "" });
+  const [editing, setEditing] = useState(null);
+  const [error, setError] = useState("");
 
-      <form className="app__composer" onSubmit={handleSubmit}>
+  const load = async () => {
+    setError("");
+    const response = await fetch(`${apiUrl}/v1/users`);
+    if (!response.ok) {
+      setError("Nepodařilo se načíst uživatele.");
+      return;
+    }
+    const data = await response.json();
+    setItems(data);
+  };
+
+  useEffect(() => {
+    load();
+  }, [apiUrl]);
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
+    setError("");
+    const response = await fetch(`${apiUrl}/v1/users`, {
+      method: "POST",
+      headers: defaultHeaders,
+      body: JSON.stringify(form),
+    });
+    if (!response.ok) {
+      setError("Uživatel se nepodařil vytvořit.");
+      return;
+    }
+    setForm({ name: "", login: "", password: "" });
+    await load();
+  };
+
+  const handleDelete = async (userId) => {
+    const response = await fetch(`${apiUrl}/v1/users/${userId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      setError("Uživatel se nepodařil odstranit.");
+      return;
+    }
+    await load();
+  };
+
+  const handleEditSave = async () => {
+    if (!editing) {
+      return;
+    }
+    const response = await fetch(`${apiUrl}/v1/users/${editing.user}`, {
+      method: "PUT",
+      headers: defaultHeaders,
+      body: JSON.stringify(editing),
+    });
+    if (!response.ok) {
+      setError("Uživatel se nepodařil upravit.");
+      return;
+    }
+    setEditing(null);
+    await load();
+  };
+
+  return (
+    <SectionCard title="Správa uživatelů">
+      <form className="form form--inline" onSubmit={handleCreate}>
         <input
           type="text"
-          placeholder="Napiš zprávu…"
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
+          placeholder="Jméno"
+          value={form.name}
+          onChange={(event) => setForm({ ...form, name: event.target.value })}
+          required
         />
-        <button type="submit" disabled={isLoading}>
-          Odeslat
-        </button>
+        <input
+          type="text"
+          placeholder="Login"
+          value={form.login}
+          onChange={(event) => setForm({ ...form, login: event.target.value })}
+          required
+        />
+        <input
+          type="password"
+          placeholder="Heslo"
+          value={form.password}
+          onChange={(event) => setForm({ ...form, password: event.target.value })}
+          required
+        />
+        <button type="submit">Přidat</button>
       </form>
+      {error && <div className="form__error">{error}</div>}
+      <div className="table">
+        <div className="table__row table__head">
+          <span>ID</span>
+          <span>Jméno</span>
+          <span>Login</span>
+          <span>Akce</span>
+        </div>
+        {items.map((item) =>
+          editing?.user === item.user ? (
+            <div className="table__row" key={item.user}>
+              <span>{item.user}</span>
+              <input
+                type="text"
+                value={editing.name}
+                onChange={(event) =>
+                  setEditing({ ...editing, name: event.target.value })
+                }
+              />
+              <input
+                type="text"
+                value={editing.login}
+                onChange={(event) =>
+                  setEditing({ ...editing, login: event.target.value })
+                }
+              />
+              <div className="table__actions">
+                <button type="button" onClick={handleEditSave}>
+                  Uložit
+                </button>
+                <button type="button" onClick={() => setEditing(null)}>
+                  Zrušit
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="table__row" key={item.user}>
+              <span>{item.user}</span>
+              <span>{item.name}</span>
+              <span>{item.login}</span>
+              <div className="table__actions">
+                <button type="button" onClick={() => setEditing(item)}>
+                  Upravit
+                </button>
+                <button type="button" onClick={() => handleDelete(item.user)}>
+                  Smazat
+                </button>
+              </div>
+            </div>
+          ),
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
+function RolesSection({ apiUrl }) {
+  const [items, setItems] = useState([]);
+  const [form, setForm] = useState({
+    system_prompt: "",
+    abbr: "",
+    name: "",
+    admin: false,
+  });
+  const [editing, setEditing] = useState(null);
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    setError("");
+    const response = await fetch(`${apiUrl}/v1/user-roles`);
+    if (!response.ok) {
+      setError("Nepodařilo se načíst role.");
+      return;
+    }
+    setItems(await response.json());
+  };
+
+  useEffect(() => {
+    load();
+  }, [apiUrl]);
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
+    setError("");
+    const payload = {
+      ...form,
+      system_prompt: Number(form.system_prompt),
+    };
+    const response = await fetch(`${apiUrl}/v1/user-roles`, {
+      method: "POST",
+      headers: defaultHeaders,
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      setError("Role se nepodařila vytvořit.");
+      return;
+    }
+    setForm({ system_prompt: "", abbr: "", name: "", admin: false });
+    await load();
+  };
+
+  const handleDelete = async (roleId) => {
+    const response = await fetch(`${apiUrl}/v1/user-roles/${roleId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      setError("Role se nepodařila odstranit.");
+      return;
+    }
+    await load();
+  };
+
+  const handleEditSave = async () => {
+    if (!editing) {
+      return;
+    }
+    const response = await fetch(`${apiUrl}/v1/user-roles/${editing.user_role}`, {
+      method: "PUT",
+      headers: defaultHeaders,
+      body: JSON.stringify(editing),
+    });
+    if (!response.ok) {
+      setError("Role se nepodařila upravit.");
+      return;
+    }
+    setEditing(null);
+    await load();
+  };
+
+  return (
+    <SectionCard title="Správa uživatelských rolí">
+      <form className="form form--inline" onSubmit={handleCreate}>
+        <input
+          type="number"
+          placeholder="ID promptu"
+          value={form.system_prompt}
+          onChange={(event) =>
+            setForm({ ...form, system_prompt: event.target.value })
+          }
+          required
+        />
+        <input
+          type="text"
+          placeholder="Zkratka"
+          value={form.abbr}
+          onChange={(event) => setForm({ ...form, abbr: event.target.value })}
+          required
+        />
+        <input
+          type="text"
+          placeholder="Název"
+          value={form.name}
+          onChange={(event) => setForm({ ...form, name: event.target.value })}
+          required
+        />
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={form.admin}
+            onChange={(event) =>
+              setForm({ ...form, admin: event.target.checked })
+            }
+          />
+          Admin
+        </label>
+        <button type="submit">Přidat</button>
+      </form>
+      {error && <div className="form__error">{error}</div>}
+      <div className="table">
+        <div className="table__row table__head">
+          <span>ID</span>
+          <span>Prompt</span>
+          <span>Zkratka</span>
+          <span>Název</span>
+          <span>Admin</span>
+          <span>Akce</span>
+        </div>
+        {items.map((item) =>
+          editing?.user_role === item.user_role ? (
+            <div className="table__row" key={item.user_role}>
+              <span>{item.user_role}</span>
+              <input
+                type="number"
+                value={editing.system_prompt}
+                onChange={(event) =>
+                  setEditing({
+                    ...editing,
+                    system_prompt: Number(event.target.value),
+                  })
+                }
+              />
+              <input
+                type="text"
+                value={editing.abbr}
+                onChange={(event) =>
+                  setEditing({ ...editing, abbr: event.target.value })
+                }
+              />
+              <input
+                type="text"
+                value={editing.name}
+                onChange={(event) =>
+                  setEditing({ ...editing, name: event.target.value })
+                }
+              />
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={editing.admin}
+                  onChange={(event) =>
+                    setEditing({ ...editing, admin: event.target.checked })
+                  }
+                />
+                Admin
+              </label>
+              <div className="table__actions">
+                <button type="button" onClick={handleEditSave}>
+                  Uložit
+                </button>
+                <button type="button" onClick={() => setEditing(null)}>
+                  Zrušit
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="table__row" key={item.user_role}>
+              <span>{item.user_role}</span>
+              <span>{item.system_prompt}</span>
+              <span>{item.abbr}</span>
+              <span>{item.name}</span>
+              <span>{item.admin ? "Ano" : "Ne"}</span>
+              <div className="table__actions">
+                <button type="button" onClick={() => setEditing(item)}>
+                  Upravit
+                </button>
+                <button type="button" onClick={() => handleDelete(item.user_role)}>
+                  Smazat
+                </button>
+              </div>
+            </div>
+          ),
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
+function TopicCategoriesSection({ apiUrl }) {
+  const [items, setItems] = useState([]);
+  const [form, setForm] = useState({
+    topic_category: "",
+    name: "",
+    description: "",
+  });
+  const [editing, setEditing] = useState(null);
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    setError("");
+    const response = await fetch(`${apiUrl}/v1/topic-categories`);
+    if (!response.ok) {
+      setError("Nepodařilo se načíst kategorie.");
+      return;
+    }
+    setItems(await response.json());
+  };
+
+  useEffect(() => {
+    load();
+  }, [apiUrl]);
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
+    setError("");
+    const response = await fetch(`${apiUrl}/v1/topic-categories`, {
+      method: "POST",
+      headers: defaultHeaders,
+      body: JSON.stringify(form),
+    });
+    if (!response.ok) {
+      setError("Kategorie se nepodařila vytvořit.");
+      return;
+    }
+    setForm({ topic_category: "", name: "", description: "" });
+    await load();
+  };
+
+  const handleDelete = async (topicCategory) => {
+    const response = await fetch(`${apiUrl}/v1/topic-categories/${topicCategory}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      setError("Kategorie se nepodařila odstranit.");
+      return;
+    }
+    await load();
+  };
+
+  const handleEditSave = async () => {
+    if (!editing) {
+      return;
+    }
+    const response = await fetch(
+      `${apiUrl}/v1/topic-categories/${editing.topic_category}`,
+      {
+        method: "PUT",
+        headers: defaultHeaders,
+        body: JSON.stringify(editing),
+      },
+    );
+    if (!response.ok) {
+      setError("Kategorie se nepodařila upravit.");
+      return;
+    }
+    setEditing(null);
+    await load();
+  };
+
+  return (
+    <SectionCard title="Správa kategorií témat">
+      <form className="form form--stack" onSubmit={handleCreate}>
+        <div className="form__row">
+          <input
+            type="text"
+            placeholder="Kód kategorie"
+            value={form.topic_category}
+            onChange={(event) =>
+              setForm({ ...form, topic_category: event.target.value })
+            }
+            required
+          />
+          <input
+            type="text"
+            placeholder="Název"
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+            required
+          />
+        </div>
+        <textarea
+          placeholder="Popis"
+          value={form.description}
+          onChange={(event) =>
+            setForm({ ...form, description: event.target.value })
+          }
+          required
+        />
+        <button type="submit">Přidat</button>
+      </form>
+      {error && <div className="form__error">{error}</div>}
+      <div className="table">
+        <div className="table__row table__head">
+          <span>Kód</span>
+          <span>Název</span>
+          <span>Popis</span>
+          <span>Akce</span>
+        </div>
+        {items.map((item) =>
+          editing?.topic_category === item.topic_category ? (
+            <div className="table__row" key={item.topic_category}>
+              <span>{item.topic_category}</span>
+              <input
+                type="text"
+                value={editing.name}
+                onChange={(event) =>
+                  setEditing({ ...editing, name: event.target.value })
+                }
+              />
+              <input
+                type="text"
+                value={editing.description}
+                onChange={(event) =>
+                  setEditing({ ...editing, description: event.target.value })
+                }
+              />
+              <div className="table__actions">
+                <button type="button" onClick={handleEditSave}>
+                  Uložit
+                </button>
+                <button type="button" onClick={() => setEditing(null)}>
+                  Zrušit
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="table__row" key={item.topic_category}>
+              <span>{item.topic_category}</span>
+              <span>{item.name}</span>
+              <span>{item.description}</span>
+              <div className="table__actions">
+                <button type="button" onClick={() => setEditing(item)}>
+                  Upravit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(item.topic_category)}
+                >
+                  Smazat
+                </button>
+              </div>
+            </div>
+          ),
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
+function TopicsSection({ apiUrl }) {
+  const [items, setItems] = useState([]);
+  const [form, setForm] = useState({
+    topic_category: "",
+    text: "",
+    embedding: "",
+  });
+  const [editing, setEditing] = useState(null);
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    setError("");
+    const response = await fetch(`${apiUrl}/v1/topics`);
+    if (!response.ok) {
+      setError("Nepodařilo se načíst témata.");
+      return;
+    }
+    setItems(await response.json());
+  };
+
+  useEffect(() => {
+    load();
+  }, [apiUrl]);
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
+    setError("");
+    const payload = {
+      topic_category: form.topic_category,
+      text: form.text,
+      embedding: parseEmbeddingInput(form.embedding),
+    };
+    const response = await fetch(`${apiUrl}/v1/topics`, {
+      method: "POST",
+      headers: defaultHeaders,
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      setError("Téma se nepodařilo vytvořit.");
+      return;
+    }
+    setForm({ topic_category: "", text: "", embedding: "" });
+    await load();
+  };
+
+  const handleDelete = async (topicId) => {
+    const response = await fetch(`${apiUrl}/v1/topics/${topicId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      setError("Téma se nepodařilo odstranit.");
+      return;
+    }
+    await load();
+  };
+
+  const handleEditSave = async () => {
+    if (!editing) {
+      return;
+    }
+    const payload = {
+      ...editing,
+      embedding: parseEmbeddingInput(editing.embedding),
+    };
+    const response = await fetch(`${apiUrl}/v1/topics/${editing.topic}`, {
+      method: "PUT",
+      headers: defaultHeaders,
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      setError("Téma se nepodařilo upravit.");
+      return;
+    }
+    setEditing(null);
+    await load();
+  };
+
+  return (
+    <SectionCard title="Správa témat">
+      <form className="form form--stack" onSubmit={handleCreate}>
+        <div className="form__row">
+          <input
+            type="text"
+            placeholder="Kategorie"
+            value={form.topic_category}
+            onChange={(event) =>
+              setForm({ ...form, topic_category: event.target.value })
+            }
+            required
+          />
+          <input
+            type="text"
+            placeholder="Embedding (čárkami)"
+            value={form.embedding}
+            onChange={(event) =>
+              setForm({ ...form, embedding: event.target.value })
+            }
+            required
+          />
+        </div>
+        <textarea
+          placeholder="Text tématu"
+          value={form.text}
+          onChange={(event) => setForm({ ...form, text: event.target.value })}
+          required
+        />
+        <button type="submit">Přidat</button>
+      </form>
+      {error && <div className="form__error">{error}</div>}
+      <div className="table">
+        <div className="table__row table__head">
+          <span>ID</span>
+          <span>Kategorie</span>
+          <span>Text</span>
+          <span>Embedding</span>
+          <span>Akce</span>
+        </div>
+        {items.map((item) =>
+          editing?.topic === item.topic ? (
+            <div className="table__row" key={item.topic}>
+              <span>{item.topic}</span>
+              <input
+                type="text"
+                value={editing.topic_category}
+                onChange={(event) =>
+                  setEditing({
+                    ...editing,
+                    topic_category: event.target.value,
+                  })
+                }
+              />
+              <input
+                type="text"
+                value={editing.text}
+                onChange={(event) =>
+                  setEditing({ ...editing, text: event.target.value })
+                }
+              />
+              <input
+                type="text"
+                value={editing.embedding}
+                onChange={(event) =>
+                  setEditing({ ...editing, embedding: event.target.value })
+                }
+              />
+              <div className="table__actions">
+                <button type="button" onClick={handleEditSave}>
+                  Uložit
+                </button>
+                <button type="button" onClick={() => setEditing(null)}>
+                  Zrušit
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="table__row" key={item.topic}>
+              <span>{item.topic}</span>
+              <span>{item.topic_category}</span>
+              <span>{item.text}</span>
+              <span>{formatEmbedding(item.embedding)}</span>
+              <div className="table__actions">
+                <button type="button" onClick={() => setEditing({
+                  ...item,
+                  embedding: formatEmbedding(item.embedding),
+                })}>
+                  Upravit
+                </button>
+                <button type="button" onClick={() => handleDelete(item.topic)}>
+                  Smazat
+                </button>
+              </div>
+            </div>
+          ),
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
+function FunctionsSection({ apiUrl }) {
+  const [items, setItems] = useState([]);
+  const [form, setForm] = useState({
+    name: "",
+    description: "",
+    type: "",
+    script: "",
+    active: true,
+  });
+  const [editing, setEditing] = useState(null);
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    setError("");
+    const response = await fetch(`${apiUrl}/v1/functions`);
+    if (!response.ok) {
+      setError("Nepodařilo se načíst funkce.");
+      return;
+    }
+    setItems(await response.json());
+  };
+
+  useEffect(() => {
+    load();
+  }, [apiUrl]);
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
+    setError("");
+    const response = await fetch(`${apiUrl}/v1/functions`, {
+      method: "POST",
+      headers: defaultHeaders,
+      body: JSON.stringify(form),
+    });
+    if (!response.ok) {
+      setError("Funkci se nepodařilo vytvořit.");
+      return;
+    }
+    setForm({
+      name: "",
+      description: "",
+      type: "",
+      script: "",
+      active: true,
+    });
+    await load();
+  };
+
+  const handleDelete = async (functionId) => {
+    const response = await fetch(`${apiUrl}/v1/functions/${functionId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      setError("Funkci se nepodařilo odstranit.");
+      return;
+    }
+    await load();
+  };
+
+  const handleEditSave = async () => {
+    if (!editing) {
+      return;
+    }
+    const response = await fetch(`${apiUrl}/v1/functions/${editing.function}`, {
+      method: "PUT",
+      headers: defaultHeaders,
+      body: JSON.stringify(editing),
+    });
+    if (!response.ok) {
+      setError("Funkci se nepodařilo upravit.");
+      return;
+    }
+    setEditing(null);
+    await load();
+  };
+
+  return (
+    <SectionCard title="Správa funkcí">
+      <form className="form form--stack" onSubmit={handleCreate}>
+        <div className="form__row">
+          <input
+            type="text"
+            placeholder="Název"
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+            required
+          />
+          <input
+            type="text"
+            placeholder="Typ"
+            value={form.type}
+            onChange={(event) => setForm({ ...form, type: event.target.value })}
+            required
+          />
+        </div>
+        <textarea
+          placeholder="Popis"
+          value={form.description}
+          onChange={(event) =>
+            setForm({ ...form, description: event.target.value })
+          }
+          required
+        />
+        <textarea
+          placeholder="Skript"
+          value={form.script}
+          onChange={(event) =>
+            setForm({ ...form, script: event.target.value })
+          }
+          required
+        />
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={form.active}
+            onChange={(event) =>
+              setForm({ ...form, active: event.target.checked })
+            }
+          />
+          Aktivní
+        </label>
+        <button type="submit">Přidat</button>
+      </form>
+      {error && <div className="form__error">{error}</div>}
+      <div className="table">
+        <div className="table__row table__head">
+          <span>ID</span>
+          <span>Název</span>
+          <span>Typ</span>
+          <span>Aktivní</span>
+          <span>Akce</span>
+        </div>
+        {items.map((item) =>
+          editing?.function === item.function ? (
+            <div className="table__row" key={item.function}>
+              <span>{item.function}</span>
+              <input
+                type="text"
+                value={editing.name}
+                onChange={(event) =>
+                  setEditing({ ...editing, name: event.target.value })
+                }
+              />
+              <input
+                type="text"
+                value={editing.type}
+                onChange={(event) =>
+                  setEditing({ ...editing, type: event.target.value })
+                }
+              />
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={editing.active}
+                  onChange={(event) =>
+                    setEditing({ ...editing, active: event.target.checked })
+                  }
+                />
+                Aktivní
+              </label>
+              <div className="table__actions">
+                <button type="button" onClick={handleEditSave}>
+                  Uložit
+                </button>
+                <button type="button" onClick={() => setEditing(null)}>
+                  Zrušit
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="table__row" key={item.function}>
+              <span>{item.function}</span>
+              <span>{item.name}</span>
+              <span>{item.type}</span>
+              <span>{item.active ? "Ano" : "Ne"}</span>
+              <div className="table__actions">
+                <button type="button" onClick={() => setEditing(item)}>
+                  Upravit
+                </button>
+                <button type="button" onClick={() => handleDelete(item.function)}>
+                  Smazat
+                </button>
+              </div>
+            </div>
+          ),
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
+function AdminPanel({ user, onLogout }) {
+  const sections = useMemo(
+    () => [
+      { key: "users", label: "Uživatelé", component: UsersSection },
+      { key: "roles", label: "Role", component: RolesSection },
+      { key: "topics", label: "Témata", component: TopicsSection },
+      { key: "topic-categories", label: "Kategorie", component: TopicCategoriesSection },
+      { key: "functions", label: "Funkce", component: FunctionsSection },
+    ],
+    [],
+  );
+  const [activeKey, setActiveKey] = useState(sections[0].key);
+  const activeSection = sections.find((section) => section.key === activeKey);
+
+  return (
+    <div className="app">
+      <header className="app__header">
+        <div>
+          <h1>Kachna</h1>
+          <span>Admin dashboard</span>
+        </div>
+        <div className="app__user">
+          <span>
+            {user.name} ({user.login})
+          </span>
+          <button type="button" onClick={onLogout}>
+            Odhlásit
+          </button>
+        </div>
+      </header>
+      <div className="app__body">
+        <nav className="tabs">
+          {sections.map((section) => (
+            <button
+              key={section.key}
+              type="button"
+              className={section.key === activeKey ? "active" : ""}
+              onClick={() => setActiveKey(section.key)}
+            >
+              {section.label}
+            </button>
+          ))}
+        </nav>
+        <main className="content">
+          {activeSection && (
+            <activeSection.component apiUrl={API_URL} />
+          )}
+        </main>
+      </div>
     </div>
+  );
+}
+
+export default function App() {
+  const [user, setUser] = useState(emptyUser);
+
+  const handleLogout = () => {
+    setUser(emptyUser);
+  };
+
+  return user.user ? (
+    <AdminPanel user={user} onLogout={handleLogout} />
+  ) : (
+    <LoginForm onLogin={setUser} />
   );
 }
