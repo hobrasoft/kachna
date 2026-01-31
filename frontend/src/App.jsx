@@ -1101,7 +1101,6 @@ function FunctionsSection({ apiUrl }) {
           {error && <div className="form__error">{error}</div>}
           <div className="table">
             <div className="table__row table__head">
-              <span>ID</span>
               <span>Název</span>
               <span>Typ</span>
               <span>Aktivní</span>
@@ -1109,7 +1108,6 @@ function FunctionsSection({ apiUrl }) {
             </div>
             {items.map((item) => (
               <div className="table__row" key={item.function}>
-                <span>{item.function}</span>
                 <span>{item.name}</span>
                 <span>{item.type}</span>
                 <span>{item.active ? "Ano" : "Ne"}</span>
