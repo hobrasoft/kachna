@@ -15,9 +15,6 @@ const emptyUser = {
 
 const defaultChatModel = "local-model";
 
-const formatEmbedding = (embedding) =>
-  Array.isArray(embedding) ? embedding.join(", ") : "";
-
 function SectionCard({ title, children }) {
   return (
     <section className="card">
@@ -914,7 +911,6 @@ function TopicsSection({ apiUrl }) {
               <span>ID</span>
               <span>Kategorie</span>
               <span>Text</span>
-              <span>Embedding</span>
               <span>Akce</span>
             </div>
             {items.map((item) => (
@@ -926,7 +922,6 @@ function TopicsSection({ apiUrl }) {
                   )?.name ?? item.topic_category}
                 </span>
                 <span>{item.text}</span>
-                <span>{formatEmbedding(item.embedding)}</span>
                 <div className="table__actions">
                   <button type="button" onClick={() => handleEdit(item)}>
                     Upravit
@@ -988,14 +983,25 @@ function TopicsSection({ apiUrl }) {
 function FunctionsSection({ apiUrl }) {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState({
+    function: null,
     name: "",
     description: "",
     type: "",
     script: "",
     active: true,
   });
-  const [editing, setEditing] = useState(null);
+  const [view, setView] = useState("list");
   const [error, setError] = useState("");
+
+  const resetForm = () =>
+    setForm({
+      function: null,
+      name: "",
+      description: "",
+      type: "",
+      script: "",
+      active: true,
+    });
 
   const load = async () => {
     setError("");
@@ -1011,161 +1017,167 @@ function FunctionsSection({ apiUrl }) {
     load();
   }, [apiUrl]);
 
-  const handleCreate = async (event) => {
+  const handleSave = async (event) => {
     event.preventDefault();
     setError("");
-    const response = await apiClient.post(apiUrl, "/v1/functions", form);
+    const payload = {
+      name: form.name,
+      description: form.description,
+      type: form.type,
+      script: form.script,
+      active: form.active,
+    };
+    const response = form.function
+      ? await apiClient.put(
+          apiUrl,
+          `/v1/functions/${form.function}`,
+          payload,
+        )
+      : await apiClient.post(apiUrl, "/v1/functions", payload);
     if (!response.ok) {
-      setError("Funkci se nepodařilo vytvořit.");
+      setError(
+        form.function
+          ? "Funkci se nepodařilo upravit."
+          : "Funkci se nepodařilo vytvořit.",
+      );
       return;
     }
-    setForm({
-      name: "",
-      description: "",
-      type: "",
-      script: "",
-      active: true,
-    });
+    resetForm();
+    setView("list");
     await load();
   };
 
-  const handleDelete = async (functionId) => {
-    const response = await apiClient.del(apiUrl, `/v1/functions/${functionId}`);
+  const handleDelete = async () => {
+    if (!form.function) {
+      return;
+    }
+    const response = await apiClient.del(
+      apiUrl,
+      `/v1/functions/${form.function}`,
+    );
     if (!response.ok) {
       setError("Funkci se nepodařilo odstranit.");
       return;
     }
+    resetForm();
+    setView("list");
     await load();
   };
 
-  const handleEditSave = async () => {
-    if (!editing) {
-      return;
-    }
-    const response = await apiClient.put(
-      apiUrl,
-      `/v1/functions/${editing.function}`,
-      editing,
-    );
-    if (!response.ok) {
-      setError("Funkci se nepodařilo upravit.");
-      return;
-    }
-    setEditing(null);
-    await load();
+  const handleAdd = () => {
+    setError("");
+    resetForm();
+    setView("form");
+  };
+
+  const handleEdit = (item) => {
+    setError("");
+    setForm({
+      function: item.function,
+      name: item.name ?? "",
+      description: item.description ?? "",
+      type: item.type ?? "",
+      script: item.script ?? "",
+      active: item.active ?? false,
+    });
+    setView("form");
+  };
+
+  const handleCancel = () => {
+    setError("");
+    resetForm();
+    setView("list");
   };
 
   return (
     <SectionCard title="Správa funkcí">
-      <form className="form form--stack" onSubmit={handleCreate}>
-        <div className="form__row">
-          <input
-            type="text"
-            placeholder="Název"
-            value={form.name}
-            onChange={(event) => setForm({ ...form, name: event.target.value })}
-            required
-          />
-          <input
-            type="text"
-            placeholder="Typ"
-            value={form.type}
-            onChange={(event) => setForm({ ...form, type: event.target.value })}
-            required
-          />
-        </div>
-        <textarea
-          placeholder="Popis"
-          value={form.description}
-          onChange={(event) =>
-            setForm({ ...form, description: event.target.value })
-          }
-          required
-        />
-        <textarea
-          placeholder="Skript"
-          value={form.script}
-          onChange={(event) =>
-            setForm({ ...form, script: event.target.value })
-          }
-          required
-        />
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={form.active}
+      {view === "list" ? (
+        <>
+          <div className="table__actions">
+            <button type="button" onClick={handleAdd}>
+              Přidat
+            </button>
+          </div>
+          {error && <div className="form__error">{error}</div>}
+          <div className="table">
+            <div className="table__row table__head">
+              <span>ID</span>
+              <span>Název</span>
+              <span>Typ</span>
+              <span>Aktivní</span>
+              <span>Akce</span>
+            </div>
+            {items.map((item) => (
+              <div className="table__row" key={item.function}>
+                <span>{item.function}</span>
+                <span>{item.name}</span>
+                <span>{item.type}</span>
+                <span>{item.active ? "Ano" : "Ne"}</span>
+                <div className="table__actions">
+                  <button type="button" onClick={() => handleEdit(item)}>
+                    Upravit
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <form className="form form--stack" onSubmit={handleSave}>
+          <div className="form__row">
+            <input
+              type="text"
+              placeholder="Název"
+              value={form.name}
+              onChange={(event) => setForm({ ...form, name: event.target.value })}
+              required
+            />
+            <input
+              type="text"
+              placeholder="Typ"
+              value={form.type}
+              onChange={(event) => setForm({ ...form, type: event.target.value })}
+              required
+            />
+          </div>
+          <textarea
+            placeholder="Popis"
+            value={form.description}
             onChange={(event) =>
-              setForm({ ...form, active: event.target.checked })
+              setForm({ ...form, description: event.target.value })
             }
+            required
           />
-          Aktivní
-        </label>
-        <button type="submit">Přidat</button>
-      </form>
-      {error && <div className="form__error">{error}</div>}
-      <div className="table">
-        <div className="table__row table__head">
-          <span>ID</span>
-          <span>Název</span>
-          <span>Typ</span>
-          <span>Aktivní</span>
-          <span>Akce</span>
-        </div>
-        {items.map((item) =>
-          editing?.function === item.function ? (
-            <div className="table__row" key={item.function}>
-              <span>{item.function}</span>
-              <input
-                type="text"
-                value={editing.name}
-                onChange={(event) =>
-                  setEditing({ ...editing, name: event.target.value })
-                }
-              />
-              <input
-                type="text"
-                value={editing.type}
-                onChange={(event) =>
-                  setEditing({ ...editing, type: event.target.value })
-                }
-              />
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={editing.active}
-                  onChange={(event) =>
-                    setEditing({ ...editing, active: event.target.checked })
-                  }
-                />
-                Aktivní
-              </label>
-              <div className="table__actions">
-                <button type="button" onClick={handleEditSave}>
-                  Uložit
-                </button>
-                <button type="button" onClick={() => setEditing(null)}>
-                  Zrušit
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="table__row" key={item.function}>
-              <span>{item.function}</span>
-              <span>{item.name}</span>
-              <span>{item.type}</span>
-              <span>{item.active ? "Ano" : "Ne"}</span>
-              <div className="table__actions">
-                <button type="button" onClick={() => setEditing(item)}>
-                  Upravit
-                </button>
-                <button type="button" onClick={() => handleDelete(item.function)}>
-                  Smazat
-                </button>
-              </div>
-            </div>
-          ),
-        )}
-      </div>
+          <textarea
+            placeholder="Skript"
+            value={form.script}
+            onChange={(event) =>
+              setForm({ ...form, script: event.target.value })
+            }
+            required
+          />
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={form.active}
+              onChange={(event) =>
+                setForm({ ...form, active: event.target.checked })
+              }
+            />
+            Aktivní
+          </label>
+          {error && <div className="form__error">{error}</div>}
+          <div className="form__actions">
+            <button type="button" onClick={handleCancel}>
+              Zrušit
+            </button>
+            <button type="submit">Uložit</button>
+            <button type="button" onClick={handleDelete} disabled={!form.function}>
+              Smazat
+            </button>
+          </div>
+        </form>
+      )}
     </SectionCard>
   );
 }
