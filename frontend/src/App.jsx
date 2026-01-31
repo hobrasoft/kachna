@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { apiClient } from "./apiClient";
 
 const API_URL =
   __KACHNA_API_URL__ ??
@@ -10,10 +11,6 @@ const emptyUser = {
   name: "",
   login: "",
   roles: [],
-};
-
-const defaultHeaders = {
-  "Content-Type": "application/json",
 };
 
 const defaultChatModel = "local-model";
@@ -42,10 +39,9 @@ function LoginForm({ onLogin }) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/v1/login`, {
-        method: "POST",
-        headers: defaultHeaders,
-        body: JSON.stringify({ login, password }),
+      const response = await apiClient.post(API_URL, "/v1/login", {
+        login,
+        password,
       });
 
       if (!response.ok) {
@@ -107,7 +103,7 @@ function ChatPanel({ apiUrl }) {
   useEffect(() => {
     const loadModels = async () => {
       try {
-        const response = await fetch(`${apiUrl}/v1/models`);
+        const response = await apiClient.get(apiUrl, "/v1/models");
         if (!response.ok) {
           return;
         }
@@ -138,10 +134,9 @@ function ChatPanel({ apiUrl }) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${apiUrl}/v1/chat/completions`, {
-        method: "POST",
-        headers: defaultHeaders,
-        body: JSON.stringify({ model, messages: nextMessages }),
+      const response = await apiClient.post(apiUrl, "/v1/chat/completions", {
+        model,
+        messages: nextMessages,
       });
 
       if (!response.ok) {
@@ -213,7 +208,7 @@ function UsersSection({ apiUrl }) {
 
   const load = async () => {
     setError("");
-    const response = await fetch(`${apiUrl}/v1/users`);
+    const response = await apiClient.get(apiUrl, "/v1/users");
     if (!response.ok) {
       setError("Nepodařilo se načíst uživatele.");
       return;
@@ -224,7 +219,7 @@ function UsersSection({ apiUrl }) {
 
   const loadRoles = async () => {
     setError("");
-    const response = await fetch(`${apiUrl}/v1/user-roles`);
+    const response = await apiClient.get(apiUrl, "/v1/user-roles");
     if (!response.ok) {
       setError("Nepodařilo se načíst role.");
       return;
@@ -249,15 +244,11 @@ function UsersSection({ apiUrl }) {
 
   const handleCreate = async () => {
     setError("");
-    const response = await fetch(`${apiUrl}/v1/users`, {
-      method: "POST",
-      headers: defaultHeaders,
-      body: JSON.stringify({
-        name: form.name,
-        login: form.login,
-        password: form.password,
-        roles: form.roles,
-      }),
+    const response = await apiClient.post(apiUrl, "/v1/users", {
+      name: form.name,
+      login: form.login,
+      password: form.password,
+      roles: form.roles,
     });
     if (!response.ok) {
       setError("Uživatel se nepodařil vytvořit.");
@@ -269,9 +260,7 @@ function UsersSection({ apiUrl }) {
   };
 
   const handleDelete = async (userId) => {
-    const response = await fetch(`${apiUrl}/v1/users/${userId}`, {
-      method: "DELETE",
-    });
+    const response = await apiClient.del(apiUrl, `/v1/users/${userId}`);
     if (!response.ok) {
       setError("Uživatel se nepodařil odstranit.");
       return;
@@ -295,11 +284,11 @@ function UsersSection({ apiUrl }) {
     if (form.password) {
       payload.password = form.password;
     }
-    const response = await fetch(`${apiUrl}/v1/users/${form.user}`, {
-      method: "PUT",
-      headers: defaultHeaders,
-      body: JSON.stringify(payload),
-    });
+    const response = await apiClient.put(
+      apiUrl,
+      `/v1/users/${form.user}`,
+      payload,
+    );
     if (!response.ok) {
       setError("Uživatel se nepodařil upravit.");
       return;
@@ -456,7 +445,7 @@ function RolesSection({ apiUrl }) {
 
   const loadRoles = async () => {
     setError("");
-    const response = await fetch(`${apiUrl}/v1/user-roles`);
+    const response = await apiClient.get(apiUrl, "/v1/user-roles");
     if (!response.ok) {
       setError("Nepodařilo se načíst role.");
       return;
@@ -465,7 +454,7 @@ function RolesSection({ apiUrl }) {
   };
 
   const loadPrompts = async () => {
-    const response = await fetch(`${apiUrl}/v1/system-prompts`);
+    const response = await apiClient.get(apiUrl, "/v1/system-prompts");
     if (!response.ok) {
       setError("Nepodařilo se načíst prompty.");
       return;
@@ -487,14 +476,13 @@ function RolesSection({ apiUrl }) {
       name: form.name,
       admin: form.admin,
     };
-    const endpoint = form.user_role
-      ? `${apiUrl}/v1/user-roles/${form.user_role}`
-      : `${apiUrl}/v1/user-roles`;
-    const response = await fetch(endpoint, {
-      method: form.user_role ? "PUT" : "POST",
-      headers: defaultHeaders,
-      body: JSON.stringify(payload),
-    });
+    const response = form.user_role
+      ? await apiClient.put(
+          apiUrl,
+          `/v1/user-roles/${form.user_role}`,
+          payload,
+        )
+      : await apiClient.post(apiUrl, "/v1/user-roles", payload);
     if (!response.ok) {
       setError(
         form.user_role ? "Role se nepodařila upravit." : "Role se nepodařila vytvořit.",
@@ -510,9 +498,10 @@ function RolesSection({ apiUrl }) {
     if (!form.user_role) {
       return;
     }
-    const response = await fetch(`${apiUrl}/v1/user-roles/${form.user_role}`, {
-      method: "DELETE",
-    });
+    const response = await apiClient.del(
+      apiUrl,
+      `/v1/user-roles/${form.user_role}`,
+    );
     if (!response.ok) {
       setError("Role se nepodařila odstranit.");
       return;
@@ -661,7 +650,7 @@ function TopicCategoriesSection({ apiUrl }) {
 
   const load = async () => {
     setError("");
-    const response = await fetch(`${apiUrl}/v1/topic-categories`);
+    const response = await apiClient.get(apiUrl, "/v1/topic-categories");
     if (!response.ok) {
       setError("Nepodařilo se načíst kategorie.");
       return;
@@ -701,16 +690,12 @@ function TopicCategoriesSection({ apiUrl }) {
     event.preventDefault();
     setError("");
     const response = editingId
-      ? await fetch(`${apiUrl}/v1/topic-categories/${editingId}`, {
-          method: "PUT",
-          headers: defaultHeaders,
-          body: JSON.stringify(form),
-        })
-      : await fetch(`${apiUrl}/v1/topic-categories`, {
-          method: "POST",
-          headers: defaultHeaders,
-          body: JSON.stringify(form),
-        });
+      ? await apiClient.put(
+          apiUrl,
+          `/v1/topic-categories/${editingId}`,
+          form,
+        )
+      : await apiClient.post(apiUrl, "/v1/topic-categories", form);
     if (!response.ok) {
       setError(
         editingId
@@ -727,9 +712,10 @@ function TopicCategoriesSection({ apiUrl }) {
     if (!editingId) {
       return;
     }
-    const response = await fetch(`${apiUrl}/v1/topic-categories/${editingId}`, {
-      method: "DELETE",
-    });
+    const response = await apiClient.del(
+      apiUrl,
+      `/v1/topic-categories/${editingId}`,
+    );
     if (!response.ok) {
       setError("Kategorie se nepodařila odstranit.");
       return;
@@ -813,6 +799,7 @@ function TopicCategoriesSection({ apiUrl }) {
 
 function TopicsSection({ apiUrl }) {
   const [items, setItems] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [form, setForm] = useState({
     topic_category: "",
     text: "",
@@ -823,7 +810,7 @@ function TopicsSection({ apiUrl }) {
 
   const load = async () => {
     setError("");
-    const response = await fetch(`${apiUrl}/v1/topics`);
+    const response = await apiClient.get(apiUrl, "/v1/topics");
     if (!response.ok) {
       setError("Nepodařilo se načíst témata.");
       return;
@@ -831,8 +818,17 @@ function TopicsSection({ apiUrl }) {
     setItems(await response.json());
   };
 
+  const loadCategories = async () => {
+    const response = await apiClient.get(apiUrl, "/v1/topic-categories");
+    if (!response.ok) {
+      return;
+    }
+    setCategories(await response.json());
+  };
+
   useEffect(() => {
     load();
+    loadCategories();
   }, [apiUrl]);
 
   const handleSave = async (event) => {
@@ -848,16 +844,8 @@ function TopicsSection({ apiUrl }) {
       text: form.text,
     };
     const response = editingId
-      ? await fetch(`${apiUrl}/v1/topics/${editingId}`, {
-          method: "PUT",
-          headers: defaultHeaders,
-          body: JSON.stringify(payload),
-        })
-      : await fetch(`${apiUrl}/v1/topics`, {
-          method: "POST",
-          headers: defaultHeaders,
-          body: JSON.stringify(payload),
-        });
+      ? await apiClient.put(apiUrl, `/v1/topics/${editingId}`, payload)
+      : await apiClient.post(apiUrl, "/v1/topics", payload);
     if (!response.ok) {
       setError(
         editingId
@@ -876,9 +864,7 @@ function TopicsSection({ apiUrl }) {
     if (!editingId) {
       return;
     }
-    const response = await fetch(`${apiUrl}/v1/topics/${editingId}`, {
-      method: "DELETE",
-    });
+    const response = await apiClient.del(apiUrl, `/v1/topics/${editingId}`);
     if (!response.ok) {
       setError("Téma se nepodařilo odstranit.");
       return;
@@ -934,7 +920,11 @@ function TopicsSection({ apiUrl }) {
             {items.map((item) => (
               <div className="table__row" key={item.topic}>
                 <span>{item.topic}</span>
-                <span>{item.topic_category}</span>
+                <span>
+                  {categories.find(
+                    (category) => category.topic_category === item.topic_category,
+                  )?.name ?? item.topic_category}
+                </span>
                 <span>{item.text}</span>
                 <span>{formatEmbedding(item.embedding)}</span>
                 <div className="table__actions">
@@ -951,14 +941,23 @@ function TopicsSection({ apiUrl }) {
           {editingId && <div className="form__info">ID tématu: {editingId}</div>}
           <label>
             Kategorie
-            <input
-              type="number"
+            <select
               value={form.topic_category}
               onChange={(event) =>
                 setForm({ ...form, topic_category: event.target.value })
               }
               required
-            />
+            >
+              <option value="">Vyberte kategorii</option>
+              {categories.map((category) => (
+                <option
+                  key={category.topic_category}
+                  value={category.topic_category}
+                >
+                  {category.name}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Text tématu
@@ -1000,7 +999,7 @@ function FunctionsSection({ apiUrl }) {
 
   const load = async () => {
     setError("");
-    const response = await fetch(`${apiUrl}/v1/functions`);
+    const response = await apiClient.get(apiUrl, "/v1/functions");
     if (!response.ok) {
       setError("Nepodařilo se načíst funkce.");
       return;
@@ -1015,11 +1014,7 @@ function FunctionsSection({ apiUrl }) {
   const handleCreate = async (event) => {
     event.preventDefault();
     setError("");
-    const response = await fetch(`${apiUrl}/v1/functions`, {
-      method: "POST",
-      headers: defaultHeaders,
-      body: JSON.stringify(form),
-    });
+    const response = await apiClient.post(apiUrl, "/v1/functions", form);
     if (!response.ok) {
       setError("Funkci se nepodařilo vytvořit.");
       return;
@@ -1035,9 +1030,7 @@ function FunctionsSection({ apiUrl }) {
   };
 
   const handleDelete = async (functionId) => {
-    const response = await fetch(`${apiUrl}/v1/functions/${functionId}`, {
-      method: "DELETE",
-    });
+    const response = await apiClient.del(apiUrl, `/v1/functions/${functionId}`);
     if (!response.ok) {
       setError("Funkci se nepodařilo odstranit.");
       return;
@@ -1049,11 +1042,11 @@ function FunctionsSection({ apiUrl }) {
     if (!editing) {
       return;
     }
-    const response = await fetch(`${apiUrl}/v1/functions/${editing.function}`, {
-      method: "PUT",
-      headers: defaultHeaders,
-      body: JSON.stringify(editing),
-    });
+    const response = await apiClient.put(
+      apiUrl,
+      `/v1/functions/${editing.function}`,
+      editing,
+    );
     if (!response.ok) {
       setError("Funkci se nepodařilo upravit.");
       return;

@@ -196,17 +196,17 @@ class TopicCategoryResponse(TopicCategoryBase):
 class TopicBase(BaseModel):
     topic_category: int
     text: str
-    embedding: List[float]
+    embedding: Optional[List[float]] = None
 
 
 class TopicUpdate(BaseModel):
     topic_category: Optional[int] = None
     text: Optional[str] = None
-    embedding: Optional[List[float]] = None
 
 
 class TopicResponse(TopicBase):
     topic: int
+    embedding: List[float]
 
 
 class FunctionBase(BaseModel):
@@ -318,6 +318,50 @@ def _sanitize_llm_response(data: dict) -> dict:
         if isinstance(content, str):
             message["content"] = _strip_llm_tags(content)
     return data
+
+
+_EMBEDDING_MODEL_ID: Optional[str] = None
+
+
+async def _get_embedding_model_id() -> str:
+    global _EMBEDDING_MODEL_ID
+    if _EMBEDDING_MODEL_ID:
+        return _EMBEDDING_MODEL_ID
+    data = await _forward_to_llm(
+        EMBEDDING_BASE_URL,
+        "/v1/models",
+        EMBEDDING_TIMEOUT_S,
+        EMBEDDING_API_KEY,
+    )
+    models = data.get("data")
+    if not isinstance(models, list):
+        raise HTTPException(status_code=502, detail="Embedding modely nejsou dostupné.")
+    for model in models:
+        if isinstance(model, dict):
+            model_id = model.get("id")
+            if isinstance(model_id, str) and model_id:
+                _EMBEDDING_MODEL_ID = model_id
+                return model_id
+    raise HTTPException(status_code=502, detail="Embedding model nebyl nalezen.")
+
+
+async def _create_embedding(text: str) -> List[float]:
+    model_id = await _get_embedding_model_id()
+    payload = EmbeddingRequest(model=model_id, input=text).model_dump()
+    data = await _forward_to_llm(
+        EMBEDDING_BASE_URL,
+        "/v1/embeddings",
+        EMBEDDING_TIMEOUT_S,
+        EMBEDDING_API_KEY,
+        payload,
+    )
+    entries = data.get("data")
+    if not isinstance(entries, list) or not entries:
+        raise HTTPException(status_code=502, detail="Embedding nebyl vrácen.")
+    embedding = entries[0].get("embedding") if isinstance(entries[0], dict) else None
+    if not isinstance(embedding, list):
+        raise HTTPException(status_code=502, detail="Embedding má neplatný formát.")
+    return [float(value) for value in embedding]
 
 
 @app.on_event("startup")
@@ -589,7 +633,8 @@ async def list_topics() -> List[TopicResponse]:
 
 @app.post("/v1/topics", response_model=TopicResponse)
 async def create_topic(payload: TopicBase) -> TopicResponse:
-    embedding_value = _vector_from_list(payload.embedding)
+    embedding_list = await _create_embedding(payload.text)
+    embedding_value = _vector_from_list(embedding_list)
     row = await DB.create_topic(payload.topic_category, payload.text, embedding_value)
     row = _ensure_row(row, "Téma nebylo vytvořeno.")
     return TopicResponse(
@@ -620,9 +665,7 @@ async def update_topic(topic_id: int, payload: TopicUpdate) -> TopicResponse:
         payload.topic_category if payload.topic_category is not None else current["topic_category"]
     )
     text_value = payload.text if payload.text is not None else current["text"]
-    embedding_list = (
-        payload.embedding if payload.embedding is not None else _parse_vector(current["embedding"])
-    )
+    embedding_list = await _create_embedding(text_value)
     embedding_value = _vector_from_list(embedding_list)
     row = await DB.update_topic(topic_id, topic_category, text_value, embedding_value)
     row = _ensure_row(row, "Téma nebylo upraveno.")
