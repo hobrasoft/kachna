@@ -77,6 +77,19 @@ class Database:
             user_id,
         )
 
+    async def list_user_system_prompts(self, user_id: int) -> list[asyncpg.Record]:
+        return await self.fetch(
+            """
+            select distinct on (sp.system_prompt) sp.system_prompt, sp.text
+              from system_prompts sp
+              join user_roles ur on ur.system_prompt = sp.system_prompt
+              join user_has_role uhr on uhr.user_role = ur.user_role
+             where uhr."user" = $1
+             order by sp.system_prompt, sp.name
+            """,
+            user_id,
+        )
+
     async def list_users(self) -> list[asyncpg.Record]:
         return await self.fetch(
             "select \"user\", name, login from users order by name",

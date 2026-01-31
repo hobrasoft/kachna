@@ -313,6 +313,17 @@ class SystemPromptProvider:
         return SYSTEM_PROMPT
 
 
+async def _build_system_prompt_for_user(user_id: int) -> str:
+    rows = await DB.list_user_system_prompts(user_id)
+    prompts = [row["text"].strip() for row in rows if row["text"] and row["text"].strip()]
+    if not prompts:
+        raise HTTPException(
+            status_code=400,
+            detail="Uživatel nemá přiřazený systémový prompt.",
+        )
+    return "\n\n".join(prompts)
+
+
 def _vector_from_list(values: List[float]) -> str:
     return "[" + ",".join(str(value) for value in values) + "]"
 
@@ -563,7 +574,7 @@ async def create_conversation(
     title = payload.title or "Nová konverzace"
     row = await DB.create_conversation(user_id, title)
     row = _ensure_row(row, "Konverzace nebyla vytvořena.")
-    system_prompt = SystemPromptProvider().get_prompt()
+    system_prompt = await _build_system_prompt_for_user(user_id)
     system_embedding = await _create_embedding(system_prompt)
     await DB.create_message(
         row["conversation"],
