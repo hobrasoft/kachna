@@ -321,27 +321,11 @@ async def health_check() -> dict:
 
 @app.post("/v1/login", response_model=LoginResponse)
 async def login(payload: LoginRequest) -> LoginResponse:
-    user_row = await DB.fetchrow(
-        "select \"user\", name, login, password from users where login=$1",
-        payload.login,
-    )
+    user_row = await DB.get_user_by_login(payload.login)
     if user_row is None or user_row["password"] != payload.password:
         raise HTTPException(status_code=401, detail="Neplatné přihlašovací údaje.")
 
-    role_rows = await DB.fetch(
-        """
-        select ur.user_role,
-               ur.system_prompt,
-               ur.abbr,
-               ur.name,
-               ur.admin
-          from user_roles ur
-          join user_has_role uhr on uhr.user_role = ur.user_role
-         where uhr."user" = $1
-         order by ur.name
-        """,
-        user_row["user"],
-    )
+    role_rows = await DB.get_user_roles(user_row["user"])
     roles = [
         LoginRole(
             user_role=row["user_role"],
@@ -362,9 +346,7 @@ async def login(payload: LoginRequest) -> LoginResponse:
 
 @app.get("/v1/users", response_model=List[UserResponse])
 async def list_users() -> List[UserResponse]:
-    rows = await DB.fetch(
-        "select \"user\", name, login from users order by name",
-    )
+    rows = await DB.list_users()
     return [
         UserResponse(user=row["user"], name=row["name"], login=row["login"])
         for row in rows
@@ -373,59 +355,33 @@ async def list_users() -> List[UserResponse]:
 
 @app.post("/v1/users", response_model=UserResponse)
 async def create_user(payload: UserCreate) -> UserResponse:
-    row = await DB.fetchrow(
-        """
-        insert into users (name, login, password)
-        values ($1, $2, $3)
-        returning "user", name, login
-        """,
-        payload.name,
-        payload.login,
-        payload.password,
-    )
+    row = await DB.create_user(payload.name, payload.login, payload.password)
     row = _ensure_row(row, "Uživatel nebyl vytvořen.")
     return UserResponse(user=row["user"], name=row["name"], login=row["login"])
 
 
 @app.get("/v1/users/{user_id}", response_model=UserResponse)
 async def get_user(user_id: int) -> UserResponse:
-    row = await DB.fetchrow(
-        "select \"user\", name, login from users where \"user\"=$1",
-        user_id,
-    )
+    row = await DB.get_user(user_id)
     row = _ensure_row(row, "Uživatel nenalezen.")
     return UserResponse(user=row["user"], name=row["name"], login=row["login"])
 
 
 @app.put("/v1/users/{user_id}", response_model=UserResponse)
 async def update_user(user_id: int, payload: UserUpdate) -> UserResponse:
-    current = await DB.fetchrow(
-        "select \"user\", name, login, password from users where \"user\"=$1",
-        user_id,
-    )
+    current = await DB.get_user_with_password(user_id)
     current = _ensure_row(current, "Uživatel nenalezen.")
     name = payload.name if payload.name is not None else current["name"]
     login_value = payload.login if payload.login is not None else current["login"]
     password = payload.password if payload.password is not None else current["password"]
-    row = await DB.fetchrow(
-        """
-        update users
-           set name=$1, login=$2, password=$3
-         where "user"=$4
-         returning "user", name, login
-        """,
-        name,
-        login_value,
-        password,
-        user_id,
-    )
+    row = await DB.update_user(user_id, name, login_value, password)
     row = _ensure_row(row, "Uživatel nebyl upraven.")
     return UserResponse(user=row["user"], name=row["name"], login=row["login"])
 
 
 @app.delete("/v1/users/{user_id}")
 async def delete_user(user_id: int) -> dict:
-    result = await DB.execute("delete from users where \"user\"=$1", user_id)
+    result = await DB.delete_user(user_id)
     if result.split()[-1] == "0":
         raise HTTPException(status_code=404, detail="Uživatel nenalezen.")
     return {"status": "ok"}
@@ -433,13 +389,7 @@ async def delete_user(user_id: int) -> dict:
 
 @app.get("/v1/user-roles", response_model=List[RoleResponse])
 async def list_roles() -> List[RoleResponse]:
-    rows = await DB.fetch(
-        """
-        select user_role, system_prompt, abbr, name, admin
-          from user_roles
-         order by name
-        """,
-    )
+    rows = await DB.list_roles()
     return [
         RoleResponse(
             user_role=row["user_role"],
@@ -454,12 +404,7 @@ async def list_roles() -> List[RoleResponse]:
 
 @app.post("/v1/user-roles", response_model=RoleResponse)
 async def create_role(payload: RoleCreate) -> RoleResponse:
-    row = await DB.fetchrow(
-        """
-        insert into user_roles (system_prompt, abbr, name, admin)
-        values ($1, $2, $3, $4)
-        returning user_role, system_prompt, abbr, name, admin
-        """,
+    row = await DB.create_role(
         payload.system_prompt,
         payload.abbr,
         payload.name,
@@ -477,14 +422,7 @@ async def create_role(payload: RoleCreate) -> RoleResponse:
 
 @app.get("/v1/user-roles/{role_id}", response_model=RoleResponse)
 async def get_role(role_id: int) -> RoleResponse:
-    row = await DB.fetchrow(
-        """
-        select user_role, system_prompt, abbr, name, admin
-          from user_roles
-         where user_role=$1
-        """,
-        role_id,
-    )
+    row = await DB.get_role(role_id)
     row = _ensure_row(row, "Role nenalezena.")
     return RoleResponse(
         user_role=row["user_role"],
@@ -497,14 +435,7 @@ async def get_role(role_id: int) -> RoleResponse:
 
 @app.put("/v1/user-roles/{role_id}", response_model=RoleResponse)
 async def update_role(role_id: int, payload: RoleUpdate) -> RoleResponse:
-    current = await DB.fetchrow(
-        """
-        select user_role, system_prompt, abbr, name, admin
-          from user_roles
-         where user_role=$1
-        """,
-        role_id,
-    )
+    current = await DB.get_role(role_id)
     current = _ensure_row(current, "Role nenalezena.")
     system_prompt = (
         payload.system_prompt if payload.system_prompt is not None else current["system_prompt"]
@@ -512,19 +443,7 @@ async def update_role(role_id: int, payload: RoleUpdate) -> RoleResponse:
     abbr = payload.abbr if payload.abbr is not None else current["abbr"]
     name = payload.name if payload.name is not None else current["name"]
     admin = payload.admin if payload.admin is not None else current["admin"]
-    row = await DB.fetchrow(
-        """
-        update user_roles
-           set system_prompt=$1, abbr=$2, name=$3, admin=$4
-         where user_role=$5
-         returning user_role, system_prompt, abbr, name, admin
-        """,
-        system_prompt,
-        abbr,
-        name,
-        admin,
-        role_id,
-    )
+    row = await DB.update_role(role_id, system_prompt, abbr, name, admin)
     row = _ensure_row(row, "Role nebyla upravena.")
     return RoleResponse(
         user_role=row["user_role"],
@@ -537,7 +456,7 @@ async def update_role(role_id: int, payload: RoleUpdate) -> RoleResponse:
 
 @app.delete("/v1/user-roles/{role_id}")
 async def delete_role(role_id: int) -> dict:
-    result = await DB.execute("delete from user_roles where user_role=$1", role_id)
+    result = await DB.delete_role(role_id)
     if result.split()[-1] == "0":
         raise HTTPException(status_code=404, detail="Role nenalezena.")
     return {"status": "ok"}
@@ -545,13 +464,7 @@ async def delete_role(role_id: int) -> dict:
 
 @app.get("/v1/topic-categories", response_model=List[TopicCategoryResponse])
 async def list_topic_categories() -> List[TopicCategoryResponse]:
-    rows = await DB.fetch(
-        """
-        select topic_category, name, description
-          from topic_categories
-         order by name
-        """,
-    )
+    rows = await DB.list_topic_categories()
     return [
         TopicCategoryResponse(
             topic_category=row["topic_category"],
@@ -564,12 +477,7 @@ async def list_topic_categories() -> List[TopicCategoryResponse]:
 
 @app.post("/v1/topic-categories", response_model=TopicCategoryResponse)
 async def create_topic_category(payload: TopicCategoryBase) -> TopicCategoryResponse:
-    row = await DB.fetchrow(
-        """
-        insert into topic_categories (topic_category, name, description)
-        values ($1, $2, $3)
-        returning topic_category, name, description
-        """,
+    row = await DB.create_topic_category(
         payload.topic_category,
         payload.name,
         payload.description,
@@ -584,14 +492,7 @@ async def create_topic_category(payload: TopicCategoryBase) -> TopicCategoryResp
 
 @app.get("/v1/topic-categories/{topic_category}", response_model=TopicCategoryResponse)
 async def get_topic_category(topic_category: str) -> TopicCategoryResponse:
-    row = await DB.fetchrow(
-        """
-        select topic_category, name, description
-          from topic_categories
-         where topic_category=$1
-        """,
-        topic_category,
-    )
+    row = await DB.get_topic_category(topic_category)
     row = _ensure_row(row, "Kategorie tématu nenalezena.")
     return TopicCategoryResponse(
         topic_category=row["topic_category"],
@@ -605,28 +506,11 @@ async def update_topic_category(
     topic_category: str,
     payload: TopicCategoryUpdate,
 ) -> TopicCategoryResponse:
-    current = await DB.fetchrow(
-        """
-        select topic_category, name, description
-          from topic_categories
-         where topic_category=$1
-        """,
-        topic_category,
-    )
+    current = await DB.get_topic_category(topic_category)
     current = _ensure_row(current, "Kategorie tématu nenalezena.")
     name = payload.name if payload.name is not None else current["name"]
     description = payload.description if payload.description is not None else current["description"]
-    row = await DB.fetchrow(
-        """
-        update topic_categories
-           set name=$1, description=$2
-         where topic_category=$3
-         returning topic_category, name, description
-        """,
-        name,
-        description,
-        topic_category,
-    )
+    row = await DB.update_topic_category(topic_category, name, description)
     row = _ensure_row(row, "Kategorie tématu nebyla upravena.")
     return TopicCategoryResponse(
         topic_category=row["topic_category"],
@@ -637,10 +521,7 @@ async def update_topic_category(
 
 @app.delete("/v1/topic-categories/{topic_category}")
 async def delete_topic_category(topic_category: str) -> dict:
-    result = await DB.execute(
-        "delete from topic_categories where topic_category=$1",
-        topic_category,
-    )
+    result = await DB.delete_topic_category(topic_category)
     if result.split()[-1] == "0":
         raise HTTPException(status_code=404, detail="Kategorie tématu nenalezena.")
     return {"status": "ok"}
@@ -648,13 +529,7 @@ async def delete_topic_category(topic_category: str) -> dict:
 
 @app.get("/v1/topics", response_model=List[TopicResponse])
 async def list_topics() -> List[TopicResponse]:
-    rows = await DB.fetch(
-        """
-        select topic, topic_category, text, embedding::text as embedding
-          from topics
-         order by topic
-        """,
-    )
+    rows = await DB.list_topics()
     return [
         TopicResponse(
             topic=row["topic"],
@@ -669,16 +544,7 @@ async def list_topics() -> List[TopicResponse]:
 @app.post("/v1/topics", response_model=TopicResponse)
 async def create_topic(payload: TopicBase) -> TopicResponse:
     embedding_value = _vector_from_list(payload.embedding)
-    row = await DB.fetchrow(
-        """
-        insert into topics (topic_category, text, embedding)
-        values ($1, $2, $3::vector)
-        returning topic, topic_category, text, embedding::text as embedding
-        """,
-        payload.topic_category,
-        payload.text,
-        embedding_value,
-    )
+    row = await DB.create_topic(payload.topic_category, payload.text, embedding_value)
     row = _ensure_row(row, "Téma nebylo vytvořeno.")
     return TopicResponse(
         topic=row["topic"],
@@ -690,14 +556,7 @@ async def create_topic(payload: TopicBase) -> TopicResponse:
 
 @app.get("/v1/topics/{topic_id}", response_model=TopicResponse)
 async def get_topic(topic_id: int) -> TopicResponse:
-    row = await DB.fetchrow(
-        """
-        select topic, topic_category, text, embedding::text as embedding
-          from topics
-         where topic=$1
-        """,
-        topic_id,
-    )
+    row = await DB.get_topic(topic_id)
     row = _ensure_row(row, "Téma nenalezeno.")
     return TopicResponse(
         topic=row["topic"],
@@ -709,14 +568,7 @@ async def get_topic(topic_id: int) -> TopicResponse:
 
 @app.put("/v1/topics/{topic_id}", response_model=TopicResponse)
 async def update_topic(topic_id: int, payload: TopicUpdate) -> TopicResponse:
-    current = await DB.fetchrow(
-        """
-        select topic, topic_category, text, embedding::text as embedding
-          from topics
-         where topic=$1
-        """,
-        topic_id,
-    )
+    current = await DB.get_topic(topic_id)
     current = _ensure_row(current, "Téma nenalezeno.")
     topic_category = (
         payload.topic_category if payload.topic_category is not None else current["topic_category"]
@@ -726,18 +578,7 @@ async def update_topic(topic_id: int, payload: TopicUpdate) -> TopicResponse:
         payload.embedding if payload.embedding is not None else _parse_vector(current["embedding"])
     )
     embedding_value = _vector_from_list(embedding_list)
-    row = await DB.fetchrow(
-        """
-        update topics
-           set topic_category=$1, text=$2, embedding=$3::vector
-         where topic=$4
-         returning topic, topic_category, text, embedding::text as embedding
-        """,
-        topic_category,
-        text_value,
-        embedding_value,
-        topic_id,
-    )
+    row = await DB.update_topic(topic_id, topic_category, text_value, embedding_value)
     row = _ensure_row(row, "Téma nebylo upraveno.")
     return TopicResponse(
         topic=row["topic"],
@@ -749,7 +590,7 @@ async def update_topic(topic_id: int, payload: TopicUpdate) -> TopicResponse:
 
 @app.delete("/v1/topics/{topic_id}")
 async def delete_topic(topic_id: int) -> dict:
-    result = await DB.execute("delete from topics where topic=$1", topic_id)
+    result = await DB.delete_topic(topic_id)
     if result.split()[-1] == "0":
         raise HTTPException(status_code=404, detail="Téma nenalezeno.")
     return {"status": "ok"}
@@ -757,13 +598,7 @@ async def delete_topic(topic_id: int) -> dict:
 
 @app.get("/v1/functions", response_model=List[FunctionResponse])
 async def list_functions() -> List[FunctionResponse]:
-    rows = await DB.fetch(
-        """
-        select function, name, description, active, type, script
-          from functions
-         order by name
-        """,
-    )
+    rows = await DB.list_functions()
     return [
         FunctionResponse(
             function=row["function"],
@@ -779,12 +614,7 @@ async def list_functions() -> List[FunctionResponse]:
 
 @app.post("/v1/functions", response_model=FunctionResponse)
 async def create_function(payload: FunctionBase) -> FunctionResponse:
-    row = await DB.fetchrow(
-        """
-        insert into functions (name, description, active, type, script)
-        values ($1, $2, $3, $4, $5)
-        returning function, name, description, active, type, script
-        """,
+    row = await DB.create_function(
         payload.name,
         payload.description,
         payload.active,
@@ -804,14 +634,7 @@ async def create_function(payload: FunctionBase) -> FunctionResponse:
 
 @app.get("/v1/functions/{function_id}", response_model=FunctionResponse)
 async def get_function(function_id: int) -> FunctionResponse:
-    row = await DB.fetchrow(
-        """
-        select function, name, description, active, type, script
-          from functions
-         where function=$1
-        """,
-        function_id,
-    )
+    row = await DB.get_function(function_id)
     row = _ensure_row(row, "Funkce nenalezena.")
     return FunctionResponse(
         function=row["function"],
@@ -825,33 +648,20 @@ async def get_function(function_id: int) -> FunctionResponse:
 
 @app.put("/v1/functions/{function_id}", response_model=FunctionResponse)
 async def update_function(function_id: int, payload: FunctionUpdate) -> FunctionResponse:
-    current = await DB.fetchrow(
-        """
-        select function, name, description, active, type, script
-          from functions
-         where function=$1
-        """,
-        function_id,
-    )
+    current = await DB.get_function(function_id)
     current = _ensure_row(current, "Funkce nenalezena.")
     name = payload.name if payload.name is not None else current["name"]
     description = payload.description if payload.description is not None else current["description"]
     active = payload.active if payload.active is not None else current["active"]
     type_value = payload.type if payload.type is not None else current["type"]
     script = payload.script if payload.script is not None else current["script"]
-    row = await DB.fetchrow(
-        """
-        update functions
-           set name=$1, description=$2, active=$3, type=$4, script=$5
-         where function=$6
-         returning function, name, description, active, type, script
-        """,
+    row = await DB.update_function(
+        function_id,
         name,
         description,
         active,
         type_value,
         script,
-        function_id,
     )
     row = _ensure_row(row, "Funkce nebyla upravena.")
     return FunctionResponse(
@@ -866,7 +676,7 @@ async def update_function(function_id: int, payload: FunctionUpdate) -> Function
 
 @app.delete("/v1/functions/{function_id}")
 async def delete_function(function_id: int) -> dict:
-    result = await DB.execute("delete from functions where function=$1", function_id)
+    result = await DB.delete_function(function_id)
     if result.split()[-1] == "0":
         raise HTTPException(status_code=404, detail="Funkce nenalezena.")
     return {"status": "ok"}
