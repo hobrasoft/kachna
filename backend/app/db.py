@@ -210,10 +210,56 @@ class Database:
     async def list_system_prompts(self) -> list[asyncpg.Record]:
         return await self.fetch(
             """
-            select system_prompt, name
+            select system_prompt, name, text
               from system_prompts
              order by name
             """,
+        )
+
+    async def create_system_prompt(self, name: str, text: str) -> asyncpg.Record | None:
+        return await self.fetchrow(
+            """
+            insert into system_prompts (name, text)
+            values ($1, $2)
+            returning system_prompt, name, text
+            """,
+            name,
+            text,
+        )
+
+    async def get_system_prompt(self, system_prompt: int) -> asyncpg.Record | None:
+        return await self.fetchrow(
+            """
+            select system_prompt, name, text
+              from system_prompts
+             where system_prompt=$1
+            """,
+            system_prompt,
+        )
+
+    async def update_system_prompt(
+        self,
+        system_prompt: int,
+        name: str,
+        text: str,
+    ) -> asyncpg.Record | None:
+        return await self.fetchrow(
+            """
+            update system_prompts
+               set name=$1,
+                   text=$2
+             where system_prompt=$3
+            returning system_prompt, name, text
+            """,
+            name,
+            text,
+            system_prompt,
+        )
+
+    async def delete_system_prompt(self, system_prompt: int) -> str:
+        return await self.execute(
+            "delete from system_prompts where system_prompt=$1",
+            system_prompt,
         )
 
     async def list_topic_categories(self) -> list[asyncpg.Record]:

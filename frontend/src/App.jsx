@@ -635,6 +635,163 @@ function RolesSection({ apiUrl }) {
   );
 }
 
+function SystemPromptsSection({ apiUrl }) {
+  const [items, setItems] = useState([]);
+  const [form, setForm] = useState({
+    system_prompt: null,
+    name: "",
+    text: "",
+  });
+  const [view, setView] = useState("list");
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    setError("");
+    const response = await apiClient.get(apiUrl, "/v1/system-prompts");
+    if (!response.ok) {
+      setError("Nepodařilo se načíst prompty.");
+      return;
+    }
+    setItems(await response.json());
+  };
+
+  useEffect(() => {
+    load();
+  }, [apiUrl]);
+
+  const handleAdd = () => {
+    setError("");
+    setForm({ system_prompt: null, name: "", text: "" });
+    setView("form");
+  };
+
+  const handleEdit = (item) => {
+    setError("");
+    setForm({
+      system_prompt: item.system_prompt,
+      name: item.name ?? "",
+      text: item.text ?? "",
+    });
+    setView("form");
+  };
+
+  const handleCancel = () => {
+    setError("");
+    setForm({ system_prompt: null, name: "", text: "" });
+    setView("list");
+  };
+
+  const handleSave = async (event) => {
+    event.preventDefault();
+    setError("");
+    const payload = {
+      name: form.name,
+      text: form.text,
+    };
+    const response = form.system_prompt
+      ? await apiClient.put(
+          apiUrl,
+          `/v1/system-prompts/${form.system_prompt}`,
+          payload,
+        )
+      : await apiClient.post(apiUrl, "/v1/system-prompts", payload);
+    if (!response.ok) {
+      setError(
+        form.system_prompt
+          ? "Prompt se nepodařilo upravit."
+          : "Prompt se nepodařilo vytvořit.",
+      );
+      return;
+    }
+    await load();
+    handleCancel();
+  };
+
+  const handleDelete = async () => {
+    if (!form.system_prompt) {
+      return;
+    }
+    const response = await apiClient.del(
+      apiUrl,
+      `/v1/system-prompts/${form.system_prompt}`,
+    );
+    if (!response.ok) {
+      setError("Prompt se nepodařilo odstranit.");
+      return;
+    }
+    await load();
+    handleCancel();
+  };
+
+  return (
+    <SectionCard title="Správa systémových promptů">
+      {view === "list" ? (
+        <>
+          <div className="table__actions">
+            <button type="button" onClick={handleAdd}>
+              Přidat
+            </button>
+          </div>
+          {error && <div className="form__error">{error}</div>}
+          <div className="table">
+            <div className="table__row table__head">
+              <span>Název</span>
+              <span>Text</span>
+              <span>Akce</span>
+            </div>
+            {items.map((item) => (
+              <div className="table__row" key={item.system_prompt}>
+                <span>{item.name}</span>
+                <span>{item.text}</span>
+                <div className="table__actions">
+                  <button type="button" onClick={() => handleEdit(item)}>
+                    Upravit
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <form className="form form--stack" onSubmit={handleSave}>
+          <label>
+            Název
+            <input
+              type="text"
+              value={form.name}
+              onChange={(event) => setForm({ ...form, name: event.target.value })}
+              required
+            />
+          </label>
+          <label>
+            Text
+            <textarea
+              value={form.text}
+              onChange={(event) => setForm({ ...form, text: event.target.value })}
+              rows={10}
+              required
+            />
+          </label>
+          {error && <div className="form__error">{error}</div>}
+          <div className="form__actions">
+            <button type="button" onClick={handleCancel}>
+              Zrušit
+            </button>
+            <button type="submit">Uložit</button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={!form.system_prompt}
+            >
+              Smazat
+            </button>
+          </div>
+        </form>
+      )}
+    </SectionCard>
+  );
+}
+
 function TopicCategoriesSection({ apiUrl }) {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState({
@@ -1365,6 +1522,7 @@ function AdminPanel({ apiUrl }) {
     () => [
       { key: "users", label: "Uživatelé", component: UsersSection },
       { key: "roles", label: "Role", component: RolesSection },
+      { key: "system-prompts", label: "Prompty", component: SystemPromptsSection },
       { key: "topics", label: "Témata", component: TopicsSection },
       { key: "topic-categories", label: "Kategorie", component: TopicCategoriesSection },
       { key: "function-questions", label: "Dotazy k funkcím", component: FunctionQuestionsSection },

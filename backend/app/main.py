@@ -174,9 +174,18 @@ class RoleResponse(RoleBase):
     user_role: int
 
 
-class SystemPromptSummary(BaseModel):
-    system_prompt: int
+class SystemPromptBase(BaseModel):
     name: str
+    text: str
+
+
+class SystemPromptUpdate(BaseModel):
+    name: Optional[str] = None
+    text: Optional[str] = None
+
+
+class SystemPromptResponse(SystemPromptBase):
+    system_prompt: int
 
 
 class TopicCategoryBase(BaseModel):
@@ -555,16 +564,65 @@ async def delete_role(role_id: int) -> dict:
     return {"status": "ok"}
 
 
-@app.get("/v1/system-prompts", response_model=List[SystemPromptSummary])
-async def list_system_prompts() -> List[SystemPromptSummary]:
+@app.get("/v1/system-prompts", response_model=List[SystemPromptResponse])
+async def list_system_prompts() -> List[SystemPromptResponse]:
     rows = await DB.list_system_prompts()
     return [
-        SystemPromptSummary(
+        SystemPromptResponse(
             system_prompt=row["system_prompt"],
             name=row["name"],
+            text=row["text"],
         )
         for row in rows
     ]
+
+
+@app.post("/v1/system-prompts", response_model=SystemPromptResponse)
+async def create_system_prompt(payload: SystemPromptBase) -> SystemPromptResponse:
+    row = await DB.create_system_prompt(payload.name, payload.text)
+    row = _ensure_row(row, "Prompt nebyl vytvořen.")
+    return SystemPromptResponse(
+        system_prompt=row["system_prompt"],
+        name=row["name"],
+        text=row["text"],
+    )
+
+
+@app.get("/v1/system-prompts/{system_prompt}", response_model=SystemPromptResponse)
+async def get_system_prompt(system_prompt: int) -> SystemPromptResponse:
+    row = await DB.get_system_prompt(system_prompt)
+    row = _ensure_row(row, "Prompt nenalezen.")
+    return SystemPromptResponse(
+        system_prompt=row["system_prompt"],
+        name=row["name"],
+        text=row["text"],
+    )
+
+
+@app.put("/v1/system-prompts/{system_prompt}", response_model=SystemPromptResponse)
+async def update_system_prompt(
+    system_prompt: int,
+    payload: SystemPromptUpdate,
+) -> SystemPromptResponse:
+    current = await DB.get_system_prompt(system_prompt)
+    current = _ensure_row(current, "Prompt nenalezen.")
+    name = payload.name if payload.name is not None else current["name"]
+    text = payload.text if payload.text is not None else current["text"]
+    row = await DB.update_system_prompt(system_prompt, name, text)
+    row = _ensure_row(row, "Prompt nebyl upraven.")
+    return SystemPromptResponse(
+        system_prompt=row["system_prompt"],
+        name=row["name"],
+        text=row["text"],
+    )
+
+
+@app.delete("/v1/system-prompts/{system_prompt}")
+async def delete_system_prompt(system_prompt: int) -> dict:
+    result = await DB.delete_system_prompt(system_prompt)
+    if result.split()[-1] == "0":
+        raise HTTPException(status_code=404, detail="Prompt nenalezen.")
+    return {"status": "ok"}
 
 
 @app.get("/v1/topic-categories", response_model=List[TopicCategoryResponse])
