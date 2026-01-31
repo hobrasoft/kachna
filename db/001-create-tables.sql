@@ -185,7 +185,7 @@ Politiky pro přístup k různým tématům.
 V tabulce je seznam různých reakcí, které může otevření nějakého tématu vyvolat.
 */
 create table topic_policies (
-    topic_policy        text primary key,
+    topic_policy        serial primary key,
     name                text not null,
     policy              text                -- warn, restrict, ignore, log - jedno z toho
 );
@@ -203,7 +203,7 @@ Kategorie témat, například:
 - politika
 */
 create table topic_categories (
-    topic_category      text primary key,
+    topic_category      serial primary key,
     name                text not null,
     description         text not null
 );
@@ -219,8 +219,8 @@ Umožní to pro různé uživatelské role nastavit různé reakce na témata
 */
 create table topic_categories_has_policies (
     user_role           integer not null references user_roles(user_role) on update cascade on delete cascade,
-    topic_category      text not null references topic_categories(topic_category) on update cascade on delete cascade,
-    topic_policy        text not null references topic_policies(topic_policy) on update no action on delete no action,
+    topic_category      integer not null references topic_categories(topic_category) on update cascade on delete cascade,
+    topic_policy        integer not null references topic_policies(topic_policy) on update no action on delete no action,
     primary key (user_role, topic_category)
 );
 comment on table topic_categories_has_policies is 'Vazba mezi rolí a kategorií tematu na politiku';
@@ -236,7 +236,7 @@ Zde je seznam ebeddingů, které vedou na různá definovaná témata.
 */
 create table topics (
     topic               serial primary key,
-    topic_category      text not null references topic_categories(topic_category) on update cascade on delete cascade,
+    topic_category      integer not null references topic_categories(topic_category) on update cascade on delete cascade,
    "text"               text not null,
     embedding           vector(768) not null
 );

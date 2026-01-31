@@ -664,7 +664,8 @@ function TopicCategoriesSection({ apiUrl }) {
     name: "",
     description: "",
   });
-  const [editing, setEditing] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [view, setView] = useState("list");
   const [error, setError] = useState("");
 
   const load = async () => {
@@ -681,24 +682,62 @@ function TopicCategoriesSection({ apiUrl }) {
     load();
   }, [apiUrl]);
 
-  const handleCreate = async (event) => {
-    event.preventDefault();
-    setError("");
-    const response = await fetch(`${apiUrl}/v1/topic-categories`, {
-      method: "POST",
-      headers: defaultHeaders,
-      body: JSON.stringify(form),
-    });
-    if (!response.ok) {
-      setError("Kategorie se nepodařila vytvořit.");
-      return;
-    }
+  const startCreate = () => {
     setForm({ topic_category: "", name: "", description: "" });
-    await load();
+    setEditingId(null);
+    setError("");
+    setView("form");
   };
 
-  const handleDelete = async (topicCategory) => {
-    const response = await fetch(`${apiUrl}/v1/topic-categories/${topicCategory}`, {
+  const startEdit = (item) => {
+    setForm({
+      topic_category: item.topic_category,
+      name: item.name,
+      description: item.description,
+    });
+    setEditingId(item.topic_category);
+    setError("");
+    setView("form");
+  };
+
+  const handleCancel = () => {
+    setForm({ topic_category: "", name: "", description: "" });
+    setEditingId(null);
+    setError("");
+    setView("list");
+  };
+
+  const handleSave = async (event) => {
+    event.preventDefault();
+    setError("");
+    const response = editingId
+      ? await fetch(`${apiUrl}/v1/topic-categories/${editingId}`, {
+          method: "PUT",
+          headers: defaultHeaders,
+          body: JSON.stringify(form),
+        })
+      : await fetch(`${apiUrl}/v1/topic-categories`, {
+          method: "POST",
+          headers: defaultHeaders,
+          body: JSON.stringify(form),
+        });
+    if (!response.ok) {
+      setError(
+        editingId
+          ? "Kategorie se nepodařila upravit."
+          : "Kategorie se nepodařila vytvořit.",
+      );
+      return;
+    }
+    await load();
+    handleCancel();
+  };
+
+  const handleDelete = async () => {
+    if (!editingId) {
+      return;
+    }
+    const response = await fetch(`${apiUrl}/v1/topic-categories/${editingId}`, {
       method: "DELETE",
     });
     if (!response.ok) {
@@ -706,114 +745,88 @@ function TopicCategoriesSection({ apiUrl }) {
       return;
     }
     await load();
-  };
-
-  const handleEditSave = async () => {
-    if (!editing) {
-      return;
-    }
-    const response = await fetch(
-      `${apiUrl}/v1/topic-categories/${editing.topic_category}`,
-      {
-        method: "PUT",
-        headers: defaultHeaders,
-        body: JSON.stringify(editing),
-      },
-    );
-    if (!response.ok) {
-      setError("Kategorie se nepodařila upravit.");
-      return;
-    }
-    setEditing(null);
-    await load();
+    handleCancel();
   };
 
   return (
     <SectionCard title="Správa kategorií témat">
-      <form className="form form--stack" onSubmit={handleCreate}>
-        <div className="form__row">
-          <input
-            type="text"
-            placeholder="Kód kategorie"
-            value={form.topic_category}
-            onChange={(event) =>
-              setForm({ ...form, topic_category: event.target.value })
-            }
-            required
-          />
-          <input
-            type="text"
-            placeholder="Název"
-            value={form.name}
-            onChange={(event) => setForm({ ...form, name: event.target.value })}
-            required
-          />
-        </div>
-        <textarea
-          placeholder="Popis"
-          value={form.description}
-          onChange={(event) =>
-            setForm({ ...form, description: event.target.value })
-          }
-          required
-        />
-        <button type="submit">Přidat</button>
-      </form>
-      {error && <div className="form__error">{error}</div>}
-      <div className="table">
-        <div className="table__row table__head">
-          <span>Kód</span>
-          <span>Název</span>
-          <span>Popis</span>
-          <span>Akce</span>
-        </div>
-        {items.map((item) =>
-          editing?.topic_category === item.topic_category ? (
-            <div className="table__row" key={item.topic_category}>
-              <span>{item.topic_category}</span>
+      {view === "list" ? (
+        <>
+          <div className="table__actions">
+            <button type="button" onClick={startCreate}>
+              Přidat
+            </button>
+          </div>
+          {error && <div className="form__error">{error}</div>}
+          <div className="table">
+            <div className="table__row table__head">
+              <span>Kód</span>
+              <span>Název</span>
+              <span>Popis</span>
+              <span>Akce</span>
+            </div>
+            {items.map((item) => (
+              <div className="table__row" key={item.topic_category}>
+                <span>{item.topic_category}</span>
+                <span>{item.name}</span>
+                <span>{item.description}</span>
+                <div className="table__actions">
+                  <button type="button" onClick={() => startEdit(item)}>
+                    Upravit
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <form className="form form--stack" onSubmit={handleSave}>
+            <label>
+              Kód kategorie
               <input
                 type="text"
-                value={editing.name}
+                value={form.topic_category}
                 onChange={(event) =>
-                  setEditing({ ...editing, name: event.target.value })
+                  setForm({ ...form, topic_category: event.target.value })
                 }
+                required
               />
+            </label>
+            <label>
+              Název
               <input
                 type="text"
-                value={editing.description}
+                value={form.name}
                 onChange={(event) =>
-                  setEditing({ ...editing, description: event.target.value })
+                  setForm({ ...form, name: event.target.value })
                 }
+                required
               />
-              <div className="table__actions">
-                <button type="button" onClick={handleEditSave}>
-                  Uložit
-                </button>
-                <button type="button" onClick={() => setEditing(null)}>
-                  Zrušit
-                </button>
-              </div>
+            </label>
+            <label>
+              Popis
+              <textarea
+                value={form.description}
+                onChange={(event) =>
+                  setForm({ ...form, description: event.target.value })
+                }
+                required
+              />
+            </label>
+            {error && <div className="form__error">{error}</div>}
+            <div className="form__actions">
+              <button type="button" onClick={handleCancel}>
+                Zrušit
+              </button>
+              <button type="submit">Uložit</button>
+              <button type="button" onClick={handleDelete} disabled={!editingId}>
+                Smazat
+              </button>
             </div>
-          ) : (
-            <div className="table__row" key={item.topic_category}>
-              <span>{item.topic_category}</span>
-              <span>{item.name}</span>
-              <span>{item.description}</span>
-              <div className="table__actions">
-                <button type="button" onClick={() => setEditing(item)}>
-                  Upravit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(item.topic_category)}
-                >
-                  Smazat
-                </button>
-              </div>
-            </div>
-          ),
-        )}
-      </div>
+          </form>
+        </>
+      )}
     </SectionCard>
   );
 }
