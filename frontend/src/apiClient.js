@@ -24,9 +24,10 @@ const put = (apiUrl, path, body) =>
     method: "PUT",
     body: JSON.stringify(body),
   });
-const del = (apiUrl, path) =>
+const del = (apiUrl, path, body) =>
   request(apiUrl, path, {
     method: "DELETE",
+    body: body ? JSON.stringify(body) : undefined,
   });
 
 export const apiClient = {

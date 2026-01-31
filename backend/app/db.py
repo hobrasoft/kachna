@@ -177,6 +177,16 @@ class Database:
             conversation_id,
         )
 
+    async def delete_conversation(self, conversation_id: int) -> str:
+        return await self.execute(
+            """
+            update conversations
+               set removed=true
+             where conversation=$1
+            """,
+            conversation_id,
+        )
+
     async def list_messages(self, conversation_id: int) -> list[asyncpg.Record]:
         return await self.fetch(
             """

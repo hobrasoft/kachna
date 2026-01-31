@@ -114,6 +114,15 @@ class ConversationCreateRequest(BaseModel):
     title: Optional[str] = None
 
 
+class ConversationUpdateRequest(BaseModel):
+    user: int
+    title: str
+
+
+class ConversationDeleteRequest(BaseModel):
+    user: int
+
+
 class ConversationResponse(BaseModel):
     conversation: int
     user: int
@@ -571,10 +580,53 @@ async def create_conversation(
     )
 
 
+@app.put("/v1/conversations/{conversation_id}", response_model=ConversationResponse)
+async def update_conversation_title(
+    conversation_id: int,
+    payload: ConversationUpdateRequest,
+) -> ConversationResponse:
+    conversation = await DB.get_conversation(conversation_id)
+    conversation = _ensure_row(conversation, "Konverzace nenalezena.")
+    if conversation["removed"]:
+        raise HTTPException(status_code=404, detail="Konverzace byla odstraněna.")
+    if conversation["user"] != payload.user:
+        raise HTTPException(status_code=403, detail="Konverzace nepatří uživateli.")
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Název nesmí být prázdný.")
+    updated = await DB.update_conversation_title(conversation_id, title)
+    updated = _ensure_row(updated, "Konverzace nenalezena.")
+    return ConversationResponse(
+        conversation=updated["conversation"],
+        user=updated["user"],
+        date=updated["date"],
+        title=updated["title"],
+    )
+
+
+@app.delete("/v1/conversations/{conversation_id}")
+async def delete_conversation(
+    conversation_id: int,
+    payload: ConversationDeleteRequest,
+) -> dict:
+    conversation = await DB.get_conversation(conversation_id)
+    conversation = _ensure_row(conversation, "Konverzace nenalezena.")
+    if conversation["removed"]:
+        raise HTTPException(status_code=404, detail="Konverzace byla odstraněna.")
+    if conversation["user"] != payload.user:
+        raise HTTPException(status_code=403, detail="Konverzace nepatří uživateli.")
+    result = await DB.delete_conversation(conversation_id)
+    if result.split()[-1] == "0":
+        raise HTTPException(status_code=404, detail="Konverzace nenalezena.")
+    return {"status": "ok"}
+
+
 @app.get("/v1/conversations/{conversation_id}/messages", response_model=List[MessageResponse])
 async def list_conversation_messages(conversation_id: int) -> List[MessageResponse]:
     conversation = await DB.get_conversation(conversation_id)
-    _ensure_row(conversation, "Konverzace nenalezena.")
+    conversation = _ensure_row(conversation, "Konverzace nenalezena.")
+    if conversation["removed"]:
+        raise HTTPException(status_code=404, detail="Konverzace byla odstraněna.")
     rows = await DB.list_messages(conversation_id)
     return [
         MessageResponse(

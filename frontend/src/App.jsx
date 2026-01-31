@@ -100,6 +100,10 @@ function ChatPanel({ apiUrl, user }) {
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [model, setModel] = useState(defaultChatModel);
+  const [openMenuId, setOpenMenuId] = useState(null);
+  const [editingConversationId, setEditingConversationId] = useState(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [isSavingConversation, setIsSavingConversation] = useState(false);
 
   useEffect(() => {
     const loadModels = async () => {
@@ -214,6 +218,101 @@ function ChatPanel({ apiUrl, user }) {
   const handleSelectConversation = (conversationId) => {
     setActiveConversationId(conversationId);
     setError("");
+    setOpenMenuId(null);
+  };
+
+  const handleOpenConversationMenu = (event, conversationId) => {
+    event.stopPropagation();
+    setOpenMenuId((prev) => (prev === conversationId ? null : conversationId));
+  };
+
+  const handleEditConversation = (event, conversation) => {
+    event.stopPropagation();
+    setEditingConversationId(conversation.conversation);
+    setEditingTitle(conversation.title);
+    setOpenMenuId(null);
+  };
+
+  const handleCancelEditConversation = (event) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    setEditingConversationId(null);
+    setEditingTitle("");
+  };
+
+  const handleSaveConversationTitle = async (event, conversationId) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!user?.user || isSavingConversation) {
+      return;
+    }
+    const trimmedTitle = editingTitle.trim();
+    if (!trimmedTitle) {
+      setError("Název konverzace nesmí být prázdný.");
+      return;
+    }
+    setError("");
+    setIsSavingConversation(true);
+    try {
+      const response = await apiClient.put(
+        apiUrl,
+        `/v1/conversations/${conversationId}`,
+        { user: user.user, title: trimmedTitle },
+      );
+      if (!response.ok) {
+        throw new Error("Nepodařilo se upravit název konverzace.");
+      }
+      const data = await response.json();
+      setConversations((prev) =>
+        prev.map((item) =>
+          item.conversation === conversationId ? data : item,
+        ),
+      );
+      setEditingConversationId(null);
+      setEditingTitle("");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSavingConversation(false);
+    }
+  };
+
+  const handleDeleteConversation = async (event, conversationId) => {
+    event.stopPropagation();
+    if (!user?.user || isSavingConversation) {
+      return;
+    }
+    if (!window.confirm("Opravdu chceš konverzaci smazat?")) {
+      return;
+    }
+    setError("");
+    setIsSavingConversation(true);
+    try {
+      const response = await apiClient.del(
+        apiUrl,
+        `/v1/conversations/${conversationId}`,
+        { user: user.user },
+      );
+      if (!response.ok) {
+        throw new Error("Nepodařilo se odstranit konverzaci.");
+      }
+      setConversations((prev) => {
+        const filtered = prev.filter(
+          (item) => item.conversation !== conversationId,
+        );
+        if (activeConversationId === conversationId) {
+          setActiveConversationId(filtered[0]?.conversation ?? null);
+          setMessages([]);
+        }
+        return filtered;
+      });
+      setOpenMenuId(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSavingConversation(false);
+    }
   };
 
   const handleSubmit = async (event) => {
@@ -279,14 +378,16 @@ function ChatPanel({ apiUrl, user }) {
         >
           {isLoadingConversations ? "Zakládám…" : "Nová konverzace"}
         </button>
-        <div className="chat-sidebar__list">
+        <div
+          className="chat-sidebar__list"
+          onClick={() => setOpenMenuId(null)}
+        >
           {conversations.length === 0 ? (
             <div className="chat-sidebar__empty">Žádné konverzace.</div>
           ) : (
             conversations.map((conversation) => (
-              <button
+              <div
                 key={conversation.conversation}
-                type="button"
                 className={
                   conversation.conversation === activeConversationId
                     ? "chat-sidebar__item active"
@@ -296,8 +397,80 @@ function ChatPanel({ apiUrl, user }) {
                   handleSelectConversation(conversation.conversation)
                 }
               >
-                {conversation.title}
-              </button>
+                {editingConversationId === conversation.conversation ? (
+                  <form
+                    className="chat-sidebar__edit"
+                    onSubmit={(event) =>
+                      handleSaveConversationTitle(
+                        event,
+                        conversation.conversation,
+                      )
+                    }
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      type="text"
+                      value={editingTitle}
+                      onChange={(event) => setEditingTitle(event.target.value)}
+                      autoFocus
+                    />
+                    <div className="chat-sidebar__edit-actions">
+                      <button type="submit" disabled={isSavingConversation}>
+                        Uložit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelEditConversation}
+                      >
+                        Zrušit
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <span className="chat-sidebar__title">
+                    {conversation.title}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="chat-sidebar__menu"
+                  onClick={(event) =>
+                    handleOpenConversationMenu(
+                      event,
+                      conversation.conversation,
+                    )
+                  }
+                  aria-label="Menu"
+                >
+                  ⋯
+                </button>
+                {openMenuId === conversation.conversation && (
+                  <div
+                    className="chat-sidebar__menu-popup"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      onClick={(event) =>
+                        handleEditConversation(event, conversation)
+                      }
+                    >
+                      edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) =>
+                        handleDeleteConversation(
+                          event,
+                          conversation.conversation,
+                        )
+                      }
+                    >
+                      delete
+                    </button>
+                  </div>
+                )}
+              </div>
             ))
           )}
         </div>
