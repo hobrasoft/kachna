@@ -129,6 +129,86 @@ class Database:
     async def delete_user(self, user_id: int) -> str:
         return await self.execute("delete from users where \"user\"=$1", user_id)
 
+    async def list_conversations(self, user_id: int) -> list[asyncpg.Record]:
+        return await self.fetch(
+            """
+            select conversation, "user", date, title, removed
+              from conversations
+             where "user"=$1 and removed=false
+             order by date desc, conversation desc
+            """,
+            user_id,
+        )
+
+    async def create_conversation(self, user_id: int, title: str) -> asyncpg.Record | None:
+        return await self.fetchrow(
+            """
+            insert into conversations ("user", date, title)
+            values ($1, now(), $2)
+            returning conversation, "user", date, title, removed
+            """,
+            user_id,
+            title,
+        )
+
+    async def get_conversation(self, conversation_id: int) -> asyncpg.Record | None:
+        return await self.fetchrow(
+            """
+            select conversation, "user", date, title, removed
+              from conversations
+             where conversation=$1
+            """,
+            conversation_id,
+        )
+
+    async def update_conversation_title(
+        self,
+        conversation_id: int,
+        title: str,
+    ) -> asyncpg.Record | None:
+        return await self.fetchrow(
+            """
+            update conversations
+               set title=$1
+             where conversation=$2
+            returning conversation, "user", date, title, removed
+            """,
+            title,
+            conversation_id,
+        )
+
+    async def list_messages(self, conversation_id: int) -> list[asyncpg.Record]:
+        return await self.fetch(
+            """
+            select message, conversation, role, date, "text", token_count
+              from messages
+             where conversation=$1
+             order by date, message
+            """,
+            conversation_id,
+        )
+
+    async def create_message(
+        self,
+        conversation_id: int,
+        role: str,
+        text: str,
+        token_count: int | None,
+        embedding_value: str,
+    ) -> asyncpg.Record | None:
+        return await self.fetchrow(
+            """
+            insert into messages (conversation, role, "text", token_count, embedding)
+            values ($1, $2, $3, $4, $5::vector)
+            returning message, conversation, role, date, "text", token_count
+            """,
+            conversation_id,
+            role,
+            text,
+            token_count,
+            embedding_value,
+        )
+
     async def replace_user_roles(self, user_id: int, role_ids: list[int]) -> None:
         if self._pool is None:
             raise RuntimeError("Database pool is not initialized.")

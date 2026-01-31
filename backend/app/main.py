@@ -110,6 +110,38 @@ class ChatCompletionResponse(BaseModel):
     choices: List[ChatChoice]
 
 
+class ConversationCreateRequest(BaseModel):
+    title: Optional[str] = None
+
+
+class ConversationResponse(BaseModel):
+    conversation: int
+    user: int
+    date: datetime
+    title: str
+
+
+class MessageResponse(BaseModel):
+    message: int
+    conversation: int
+    role: str
+    date: datetime
+    text: str
+    token_count: Optional[int] = None
+
+
+class ChatTurnRequest(BaseModel):
+    user: int
+    model: str
+    content: str
+
+
+class ChatTurnResponse(BaseModel):
+    conversation: ConversationResponse
+    user_message: MessageResponse
+    assistant_message: MessageResponse
+
+
 class EmbeddingRequest(BaseModel):
     model: str
     input: Any
@@ -297,6 +329,15 @@ def _ensure_row(row: Any, message: str) -> Any:
 
 def _strip_llm_tags(text: str) -> str:
     return re.sub(r"<\|.*?\|>", "", text)
+
+
+def _conversation_title_from_text(text: str) -> str:
+    cleaned = " ".join(text.split())
+    if not cleaned:
+        return "Konverzace"
+    if len(cleaned) > 60:
+        return f"{cleaned[:57].rstrip()}…"
+    return cleaned
 
 
 def _llm_headers(api_key: str | None) -> dict:
@@ -487,6 +528,153 @@ async def delete_user(user_id: int) -> dict:
     if result.split()[-1] == "0":
         raise HTTPException(status_code=404, detail="Uživatel nenalezen.")
     return {"status": "ok"}
+
+
+@app.get("/v1/users/{user_id}/conversations", response_model=List[ConversationResponse])
+async def list_conversations(user_id: int) -> List[ConversationResponse]:
+    rows = await DB.list_conversations(user_id)
+    return [
+        ConversationResponse(
+            conversation=row["conversation"],
+            user=row["user"],
+            date=row["date"],
+            title=row["title"],
+        )
+        for row in rows
+    ]
+
+
+@app.post("/v1/users/{user_id}/conversations", response_model=ConversationResponse)
+async def create_conversation(
+    user_id: int,
+    payload: ConversationCreateRequest,
+) -> ConversationResponse:
+    user_row = await DB.get_user(user_id)
+    _ensure_row(user_row, "Uživatel nenalezen.")
+    title = payload.title or "Nová konverzace"
+    row = await DB.create_conversation(user_id, title)
+    row = _ensure_row(row, "Konverzace nebyla vytvořena.")
+    system_prompt = SystemPromptProvider().get_prompt()
+    system_embedding = await _create_embedding(system_prompt)
+    await DB.create_message(
+        row["conversation"],
+        "system",
+        system_prompt,
+        None,
+        _vector_from_list(system_embedding),
+    )
+    return ConversationResponse(
+        conversation=row["conversation"],
+        user=row["user"],
+        date=row["date"],
+        title=row["title"],
+    )
+
+
+@app.get("/v1/conversations/{conversation_id}/messages", response_model=List[MessageResponse])
+async def list_conversation_messages(conversation_id: int) -> List[MessageResponse]:
+    conversation = await DB.get_conversation(conversation_id)
+    _ensure_row(conversation, "Konverzace nenalezena.")
+    rows = await DB.list_messages(conversation_id)
+    return [
+        MessageResponse(
+            message=row["message"],
+            conversation=row["conversation"],
+            role=row["role"],
+            date=row["date"],
+            text=row["text"],
+            token_count=row["token_count"],
+        )
+        for row in rows
+    ]
+
+
+@app.post(
+    "/v1/conversations/{conversation_id}/chat",
+    response_model=ChatTurnResponse,
+)
+async def create_conversation_chat_turn(
+    conversation_id: int,
+    payload: ChatTurnRequest,
+) -> ChatTurnResponse:
+    conversation = await DB.get_conversation(conversation_id)
+    conversation = _ensure_row(conversation, "Konverzace nenalezena.")
+    if conversation["user"] != payload.user:
+        raise HTTPException(status_code=403, detail="Konverzace nepatří uživateli.")
+    if conversation["removed"]:
+        raise HTTPException(status_code=404, detail="Konverzace byla odstraněna.")
+
+    user_embedding = await _create_embedding(payload.content)
+    user_row = await DB.create_message(
+        conversation_id,
+        "user",
+        payload.content,
+        None,
+        _vector_from_list(user_embedding),
+    )
+    user_row = _ensure_row(user_row, "Zpráva nebyla uložena.")
+
+    if conversation["title"] == "Nová konverzace":
+        updated_title = _conversation_title_from_text(payload.content)
+        updated_conversation = await DB.update_conversation_title(
+            conversation_id,
+            updated_title,
+        )
+        if updated_conversation is not None:
+            conversation = updated_conversation
+
+    history_rows = await DB.list_messages(conversation_id)
+    history_messages = [
+        ChatMessage(role=row["role"], content=row["text"]) for row in history_rows
+    ]
+    data = await _forward_to_llm(
+        CHAT_BASE_URL,
+        "/v1/chat/completions",
+        CHAT_TIMEOUT_S,
+        CHAT_API_KEY,
+        ChatCompletionRequest(model=payload.model, messages=history_messages).model_dump(),
+    )
+    data = _sanitize_llm_response(data)
+    choice = (data.get("choices") or [{}])[0]
+    message = choice.get("message") if isinstance(choice, dict) else {}
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, str) or not content.strip():
+        raise HTTPException(status_code=502, detail="Odpověď je prázdná.")
+    reply = content.strip()
+    assistant_embedding = await _create_embedding(reply)
+    assistant_row = await DB.create_message(
+        conversation_id,
+        "assistant",
+        reply,
+        None,
+        _vector_from_list(assistant_embedding),
+    )
+    assistant_row = _ensure_row(assistant_row, "Odpověď nebyla uložena.")
+
+    return ChatTurnResponse(
+        conversation=ConversationResponse(
+            conversation=conversation["conversation"],
+            user=conversation["user"],
+            date=conversation["date"],
+            title=conversation["title"],
+        ),
+        user_message=MessageResponse(
+            message=user_row["message"],
+            conversation=user_row["conversation"],
+            role=user_row["role"],
+            date=user_row["date"],
+            text=user_row["text"],
+            token_count=user_row["token_count"],
+        ),
+        assistant_message=MessageResponse(
+            message=assistant_row["message"],
+            conversation=assistant_row["conversation"],
+            role=assistant_row["role"],
+            date=assistant_row["date"],
+            text=assistant_row["text"],
+            token_count=assistant_row["token_count"],
+        ),
+    )
 
 
 @app.get("/v1/user-roles", response_model=List[RoleResponse])

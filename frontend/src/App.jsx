@@ -90,11 +90,15 @@ function LoginForm({ onLogin }) {
   );
 }
 
-function ChatPanel({ apiUrl }) {
+function ChatPanel({ apiUrl, user }) {
+  const [conversations, setConversations] = useState([]);
+  const [activeConversationId, setActiveConversationId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [model, setModel] = useState(defaultChatModel);
 
   useEffect(() => {
@@ -117,10 +121,105 @@ function ChatPanel({ apiUrl }) {
     loadModels();
   }, [apiUrl]);
 
+  useEffect(() => {
+    if (!user?.user) {
+      return;
+    }
+
+    const loadConversations = async () => {
+      setIsLoadingConversations(true);
+      try {
+        const response = await apiClient.get(
+          apiUrl,
+          `/v1/users/${user.user}/conversations`,
+        );
+        if (!response.ok) {
+          throw new Error("Nepodařilo se načíst konverzace.");
+        }
+        const data = await response.json();
+        setConversations(data);
+        if (!activeConversationId && data.length > 0) {
+          setActiveConversationId(data[0].conversation);
+        }
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setIsLoadingConversations(false);
+      }
+    };
+
+    loadConversations();
+  }, [apiUrl, user]);
+
+  useEffect(() => {
+    if (!activeConversationId) {
+      setMessages([]);
+      return;
+    }
+
+    const loadMessages = async () => {
+      setIsLoadingMessages(true);
+      try {
+        const response = await apiClient.get(
+          apiUrl,
+          `/v1/conversations/${activeConversationId}/messages`,
+        );
+        if (!response.ok) {
+          throw new Error("Nepodařilo se načíst zprávy.");
+        }
+        const data = await response.json();
+        setMessages(
+          data.map((message) => ({
+            id: message.message,
+            role: message.role,
+            content: message.text,
+          })),
+        );
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setIsLoadingMessages(false);
+      }
+    };
+
+    loadMessages();
+  }, [apiUrl, activeConversationId]);
+
+  const handleCreateConversation = async () => {
+    if (!user?.user || isLoadingConversations) {
+      return;
+    }
+    setError("");
+    setIsLoadingConversations(true);
+    try {
+      const response = await apiClient.post(
+        apiUrl,
+        `/v1/users/${user.user}/conversations`,
+        { title: "Nová konverzace" },
+      );
+      if (!response.ok) {
+        throw new Error("Konverzaci se nepodařilo založit.");
+      }
+      const data = await response.json();
+      setConversations((prev) => [data, ...prev]);
+      setActiveConversationId(data.conversation);
+      setMessages([]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  };
+
+  const handleSelectConversation = (conversationId) => {
+    setActiveConversationId(conversationId);
+    setError("");
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     const trimmed = input.trim();
-    if (!trimmed || isLoading) {
+    if (!trimmed || isLoading || !activeConversationId) {
       return;
     }
 
@@ -131,19 +230,33 @@ function ChatPanel({ apiUrl }) {
     setIsLoading(true);
 
     try {
-      const response = await apiClient.post(apiUrl, "/v1/chat/completions", {
-        model,
-        messages: nextMessages,
-      });
+      const response = await apiClient.post(
+        apiUrl,
+        `/v1/conversations/${activeConversationId}/chat`,
+        {
+          user: user.user,
+          model,
+          content: trimmed,
+        },
+      );
 
       if (!response.ok) {
         throw new Error("Nepodařilo se získat odpověď.");
       }
 
       const data = await response.json();
-      const reply = data?.choices?.[0]?.message?.content?.trim();
+      const reply = data?.assistant_message?.text?.trim();
       if (!reply) {
         throw new Error("Odpověď je prázdná.");
+      }
+      if (data?.conversation) {
+        setConversations((prev) =>
+          prev.map((item) =>
+            item.conversation === data.conversation.conversation
+              ? data.conversation
+              : item,
+          ),
+        );
       }
       setMessages([...nextMessages, { role: "assistant", content: reply }]);
     } catch (err) {
@@ -153,39 +266,82 @@ function ChatPanel({ apiUrl }) {
     }
   };
 
+  const visibleMessages = messages.filter((message) => message.role !== "system");
+
   return (
-    <section className="chat">
-      <div className="chat__messages">
-        {messages.length === 0 ? (
-          <div className="chat__empty">Začni konverzaci.</div>
-        ) : (
-          messages.map((message, index) => (
-            <div
-              key={`${message.role}-${index}`}
-              className={`chat__message chat__message--${message.role}`}
-            >
-              <div className="chat__role">
-                {message.role === "user" ? "Ty" : "Kachna"}
-              </div>
-              <p>{message.content}</p>
-            </div>
-          ))
-        )}
-      </div>
-      <form className="chat__form" onSubmit={handleSubmit}>
-        <textarea
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder="Napiš zprávu…"
-          rows={3}
-        />
-        <div className="chat__actions">
-          {error && <span className="chat__error">{error}</span>}
-          <button type="submit" disabled={isLoading}>
-            {isLoading ? "Odesílám…" : "Odeslat"}
-          </button>
+    <section className="chat-shell">
+      <aside className="chat-sidebar">
+        <button
+          type="button"
+          className="chat-sidebar__new"
+          onClick={handleCreateConversation}
+          disabled={isLoadingConversations}
+        >
+          {isLoadingConversations ? "Zakládám…" : "Nová konverzace"}
+        </button>
+        <div className="chat-sidebar__list">
+          {conversations.length === 0 ? (
+            <div className="chat-sidebar__empty">Žádné konverzace.</div>
+          ) : (
+            conversations.map((conversation) => (
+              <button
+                key={conversation.conversation}
+                type="button"
+                className={
+                  conversation.conversation === activeConversationId
+                    ? "chat-sidebar__item active"
+                    : "chat-sidebar__item"
+                }
+                onClick={() =>
+                  handleSelectConversation(conversation.conversation)
+                }
+              >
+                {conversation.title}
+              </button>
+            ))
+          )}
         </div>
-      </form>
+      </aside>
+      <div className="chat">
+        <div className="chat__messages">
+          {activeConversationId ? (
+            visibleMessages.length === 0 && !isLoadingMessages ? (
+              <div className="chat__empty">Začni konverzaci.</div>
+            ) : (
+              visibleMessages.map((message, index) => (
+                <div
+                  key={`${message.role}-${message.id ?? index}`}
+                  className={`chat__message chat__message--${message.role}`}
+                >
+                  <div className="chat__role">
+                    {message.role === "user" ? "Ty" : "Kachna"}
+                  </div>
+                  <p>{message.content}</p>
+                </div>
+              ))
+            )
+          ) : (
+            <div className="chat__empty">
+              Založ novou konverzaci vlevo.
+            </div>
+          )}
+        </div>
+        <form className="chat__form" onSubmit={handleSubmit}>
+          <textarea
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            placeholder="Napiš zprávu…"
+            rows={3}
+            disabled={!activeConversationId}
+          />
+          <div className="chat__actions">
+            {error && <span className="chat__error">{error}</span>}
+            <button type="submit" disabled={isLoading || !activeConversationId}>
+              {isLoading ? "Odesílám…" : "Odeslat"}
+            </button>
+          </div>
+        </form>
+      </div>
     </section>
   );
 }
@@ -1609,7 +1765,7 @@ export default function App() {
         <AdminPanel apiUrl={API_URL} />
       ) : (
         <main className="content content--chat">
-          <ChatPanel apiUrl={API_URL} />
+          <ChatPanel apiUrl={API_URL} user={user} />
         </main>
       )}
     </div>

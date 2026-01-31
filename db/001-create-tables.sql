@@ -90,10 +90,10 @@ Seznam koverzací.
 Konverzace se ukládají na serveru, dokud je uživatel nesmaže.
 */
 CREATE TABLE conversations (
-    conversation INTEGER PRIMARY KEY,
-    "user" INTEGER NOT NULL references users("user") on update cascade on delete cascade,
-    date TIMESTAMP NOT NULL,
-    title TEXT NOT NULL,
+    conversation serial primary key,
+    "user" integer not null references users("user") on update cascade on delete cascade,
+    date timestamp with time zone not null,
+    title text not null,
     removed bool not null default false
 );
 comment on table conversations is 'Seznam konverzací, spojeno s uživatelem';
@@ -249,4 +249,3 @@ comment on column topics.embedding is 'embedding vzoru pro vyhodnocování podob
 insert into versions values (1);
 
 commit;
-
