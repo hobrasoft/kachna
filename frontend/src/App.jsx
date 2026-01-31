@@ -451,16 +451,18 @@ function UsersSection({ apiUrl }) {
 
 function RolesSection({ apiUrl }) {
   const [items, setItems] = useState([]);
+  const [prompts, setPrompts] = useState([]);
   const [form, setForm] = useState({
+    user_role: null,
     system_prompt: "",
     abbr: "",
     name: "",
     admin: false,
   });
-  const [editing, setEditing] = useState(null);
+  const [view, setView] = useState("list");
   const [error, setError] = useState("");
 
-  const load = async () => {
+  const loadRoles = async () => {
     setError("");
     const response = await fetch(`${apiUrl}/v1/user-roles`);
     if (!response.ok) {
@@ -470,172 +472,187 @@ function RolesSection({ apiUrl }) {
     setItems(await response.json());
   };
 
+  const loadPrompts = async () => {
+    const response = await fetch(`${apiUrl}/v1/system-prompts`);
+    if (!response.ok) {
+      setError("Nepodařilo se načíst prompty.");
+      return;
+    }
+    setPrompts(await response.json());
+  };
+
   useEffect(() => {
-    load();
+    loadRoles();
+    loadPrompts();
   }, [apiUrl]);
 
-  const handleCreate = async (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
     const payload = {
-      ...form,
       system_prompt: Number(form.system_prompt),
+      abbr: form.abbr,
+      name: form.name,
+      admin: form.admin,
     };
-    const response = await fetch(`${apiUrl}/v1/user-roles`, {
-      method: "POST",
+    const endpoint = form.user_role
+      ? `${apiUrl}/v1/user-roles/${form.user_role}`
+      : `${apiUrl}/v1/user-roles`;
+    const response = await fetch(endpoint, {
+      method: form.user_role ? "PUT" : "POST",
       headers: defaultHeaders,
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
-      setError("Role se nepodařila vytvořit.");
+      setError(
+        form.user_role ? "Role se nepodařila upravit." : "Role se nepodařila vytvořit.",
+      );
       return;
     }
-    setForm({ system_prompt: "", abbr: "", name: "", admin: false });
-    await load();
+    setForm({ user_role: null, system_prompt: "", abbr: "", name: "", admin: false });
+    setView("list");
+    await loadRoles();
   };
 
-  const handleDelete = async (roleId) => {
-    const response = await fetch(`${apiUrl}/v1/user-roles/${roleId}`, {
+  const handleDelete = async () => {
+    if (!form.user_role) {
+      return;
+    }
+    const response = await fetch(`${apiUrl}/v1/user-roles/${form.user_role}`, {
       method: "DELETE",
     });
     if (!response.ok) {
       setError("Role se nepodařila odstranit.");
       return;
     }
-    await load();
+    setForm({ user_role: null, system_prompt: "", abbr: "", name: "", admin: false });
+    setView("list");
+    await loadRoles();
   };
 
-  const handleEditSave = async () => {
-    if (!editing) {
-      return;
-    }
-    const response = await fetch(`${apiUrl}/v1/user-roles/${editing.user_role}`, {
-      method: "PUT",
-      headers: defaultHeaders,
-      body: JSON.stringify(editing),
-    });
-    if (!response.ok) {
-      setError("Role se nepodařila upravit.");
-      return;
-    }
-    setEditing(null);
-    await load();
+  const handleAdd = () => {
+    setError("");
+    setForm({ user_role: null, system_prompt: "", abbr: "", name: "", admin: false });
+    setView("form");
   };
+
+  const handleEdit = (item) => {
+    setError("");
+    setForm({
+      user_role: item.user_role,
+      system_prompt: item.system_prompt ?? "",
+      abbr: item.abbr ?? "",
+      name: item.name ?? "",
+      admin: item.admin ?? false,
+    });
+    setView("form");
+  };
+
+  const handleCancel = () => {
+    setError("");
+    setForm({ user_role: null, system_prompt: "", abbr: "", name: "", admin: false });
+    setView("list");
+  };
+
+  const promptName = (promptId) =>
+    prompts.find((prompt) => prompt.system_prompt === promptId)?.name ?? "-";
 
   return (
     <SectionCard title="Správa uživatelských rolí">
-      <form className="form form--inline" onSubmit={handleCreate}>
-        <input
-          type="number"
-          placeholder="ID promptu"
-          value={form.system_prompt}
-          onChange={(event) =>
-            setForm({ ...form, system_prompt: event.target.value })
-          }
-          required
-        />
-        <input
-          type="text"
-          placeholder="Zkratka"
-          value={form.abbr}
-          onChange={(event) => setForm({ ...form, abbr: event.target.value })}
-          required
-        />
-        <input
-          type="text"
-          placeholder="Název"
-          value={form.name}
-          onChange={(event) => setForm({ ...form, name: event.target.value })}
-          required
-        />
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={form.admin}
-            onChange={(event) =>
-              setForm({ ...form, admin: event.target.checked })
-            }
-          />
-          Admin
-        </label>
-        <button type="submit">Přidat</button>
-      </form>
-      {error && <div className="form__error">{error}</div>}
-      <div className="table">
-        <div className="table__row table__head">
-          <span>ID</span>
-          <span>Prompt</span>
-          <span>Zkratka</span>
-          <span>Název</span>
-          <span>Admin</span>
-          <span>Akce</span>
-        </div>
-        {items.map((item) =>
-          editing?.user_role === item.user_role ? (
-            <div className="table__row" key={item.user_role}>
-              <span>{item.user_role}</span>
-              <input
-                type="number"
-                value={editing.system_prompt}
+      {view === "list" ? (
+        <>
+          <div className="form__actions">
+            <button type="button" onClick={handleAdd}>
+              Přidat
+            </button>
+          </div>
+          {error && <div className="form__error">{error}</div>}
+          <div className="table">
+            <div className="table__row table__head">
+              <span>Prompt</span>
+              <span>Zkratka</span>
+              <span>Název</span>
+              <span>Admin</span>
+              <span>Akce</span>
+            </div>
+            {items.map((item) => (
+              <div className="table__row" key={item.user_role}>
+                <span>{promptName(item.system_prompt)}</span>
+                <span>{item.abbr}</span>
+                <span>{item.name}</span>
+                <span>{item.admin ? "Ano" : "Ne"}</span>
+                <div className="table__actions">
+                  <button type="button" onClick={() => handleEdit(item)}>
+                    Upravit
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <form className="form form--stack" onSubmit={handleSubmit}>
+            <label>
+              Prompt
+              <select
+                value={form.system_prompt}
                 onChange={(event) =>
-                  setEditing({
-                    ...editing,
-                    system_prompt: Number(event.target.value),
-                  })
+                  setForm({ ...form, system_prompt: Number(event.target.value) })
                 }
-              />
+                required
+              >
+                <option value="" disabled>
+                  Vyber prompt
+                </option>
+                {prompts.map((prompt) => (
+                  <option key={prompt.system_prompt} value={prompt.system_prompt}>
+                    {prompt.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Zkratka
               <input
                 type="text"
-                value={editing.abbr}
-                onChange={(event) =>
-                  setEditing({ ...editing, abbr: event.target.value })
-                }
+                value={form.abbr}
+                onChange={(event) => setForm({ ...form, abbr: event.target.value })}
+                required
               />
+            </label>
+            <label>
+              Název
               <input
                 type="text"
-                value={editing.name}
+                value={form.name}
+                onChange={(event) => setForm({ ...form, name: event.target.value })}
+                required
+              />
+            </label>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={form.admin}
                 onChange={(event) =>
-                  setEditing({ ...editing, name: event.target.value })
+                  setForm({ ...form, admin: event.target.checked })
                 }
               />
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={editing.admin}
-                  onChange={(event) =>
-                    setEditing({ ...editing, admin: event.target.checked })
-                  }
-                />
-                Admin
-              </label>
-              <div className="table__actions">
-                <button type="button" onClick={handleEditSave}>
-                  Uložit
-                </button>
-                <button type="button" onClick={() => setEditing(null)}>
-                  Zrušit
-                </button>
-              </div>
+              Admin
+            </label>
+            {error && <div className="form__error">{error}</div>}
+            <div className="form__actions">
+              <button type="button" onClick={handleCancel}>
+                Zrušit
+              </button>
+              <button type="submit">Uložit</button>
+              <button type="button" onClick={handleDelete} disabled={!form.user_role}>
+                Smazat
+              </button>
             </div>
-          ) : (
-            <div className="table__row" key={item.user_role}>
-              <span>{item.user_role}</span>
-              <span>{item.system_prompt}</span>
-              <span>{item.abbr}</span>
-              <span>{item.name}</span>
-              <span>{item.admin ? "Ano" : "Ne"}</span>
-              <div className="table__actions">
-                <button type="button" onClick={() => setEditing(item)}>
-                  Upravit
-                </button>
-                <button type="button" onClick={() => handleDelete(item.user_role)}>
-                  Smazat
-                </button>
-              </div>
-            </div>
-          ),
-        )}
-      </div>
+          </form>
+        </>
+      )}
     </SectionCard>
   );
 }

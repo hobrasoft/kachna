@@ -276,6 +276,7 @@ textarea {
 }
 
 .form input,
+.form select,
 .form textarea {
   background: #0f172a;
   border: 1px solid #1f2937;

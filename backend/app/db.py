@@ -207,6 +207,15 @@ class Database:
     async def delete_role(self, role_id: int) -> str:
         return await self.execute("delete from user_roles where user_role=$1", role_id)
 
+    async def list_system_prompts(self) -> list[asyncpg.Record]:
+        return await self.fetch(
+            """
+            select system_prompt, name
+              from system_prompts
+             order by name
+            """,
+        )
+
     async def list_topic_categories(self) -> list[asyncpg.Record]:
         return await self.fetch(
             """
