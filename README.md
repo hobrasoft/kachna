@@ -31,6 +31,7 @@ hostname = localhost
 port = 8098
 timeout = 30
 api-key =
+similarity-threshold = 0.6
 ```
 
 Pokud spouštíš server z kořene repa, můžeš použít:

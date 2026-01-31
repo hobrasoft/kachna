@@ -105,6 +105,13 @@ function ChatPanel({ apiUrl, user }) {
   const [editingTitle, setEditingTitle] = useState("");
   const [isSavingConversation, setIsSavingConversation] = useState(false);
 
+  const formatSimilarity = (value) => {
+    if (typeof value !== "number") {
+      return "";
+    }
+    return value.toFixed(2);
+  };
+
   useEffect(() => {
     const loadModels = async () => {
       try {
@@ -348,6 +355,12 @@ function ChatPanel({ apiUrl, user }) {
       if (!reply) {
         throw new Error("Odpověď je prázdná.");
       }
+      const matchedFunctions = Array.isArray(data?.matched_functions)
+        ? data.matched_functions
+        : [];
+      const matchedTopics = Array.isArray(data?.matched_topics)
+        ? data.matched_topics
+        : [];
       if (data?.conversation) {
         setConversations((prev) =>
           prev.map((item) =>
@@ -357,7 +370,17 @@ function ChatPanel({ apiUrl, user }) {
           ),
         );
       }
-      setMessages([...nextMessages, { role: "assistant", content: reply }]);
+      setMessages([
+        ...nextMessages,
+        {
+          role: "assistant",
+          content: reply,
+          matches: {
+            functions: matchedFunctions,
+            topics: matchedTopics,
+          },
+        },
+      ]);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -490,6 +513,48 @@ function ChatPanel({ apiUrl, user }) {
                     {message.role === "user" ? "Ty" : "Kachna"}
                   </div>
                   <p>{message.content}</p>
+                  {message.matches &&
+                  (message.matches.functions?.length ||
+                    message.matches.topics?.length) ? (
+                    <div className="chat__matches">
+                      {message.matches.functions?.length ? (
+                        <div className="chat__match-group">
+                          <div className="chat__match-label">Funkce</div>
+                          <ul className="chat__match-list">
+                            {message.matches.functions.map((match) => (
+                              <li
+                                key={`function-${match.function}`}
+                                className="chat__match-item"
+                              >
+                                <span>{match.name}</span>
+                                <span className="chat__match-score">
+                                  {formatSimilarity(match.similarity)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {message.matches.topics?.length ? (
+                        <div className="chat__match-group">
+                          <div className="chat__match-label">Témata</div>
+                          <ul className="chat__match-list">
+                            {message.matches.topics.map((match) => (
+                              <li
+                                key={`topic-${match.topic}`}
+                                className="chat__match-item"
+                              >
+                                <span>{match.text}</span>
+                                <span className="chat__match-score">
+                                  {formatSimilarity(match.similarity)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ))
             )

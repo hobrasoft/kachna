@@ -24,6 +24,7 @@ CHAT_TIMEOUT_S = BackendConfig.chatTimeoutSeconds()
 EMBEDDING_TIMEOUT_S = BackendConfig.embeddingTimeoutSeconds()
 CHAT_API_KEY = BackendConfig.chatApiKey()
 EMBEDDING_API_KEY = BackendConfig.embeddingApiKey()
+SIMILARITY_THRESHOLD = BackendConfig.embeddingSimilarityThreshold()
 DB = load_database()
 
 SYSTEM_PROMPT = """Identita:
@@ -139,6 +140,23 @@ class MessageResponse(BaseModel):
     token_count: Optional[int] = None
 
 
+class FunctionMatch(BaseModel):
+    function: int
+    name: str
+    description: str
+    active: bool
+    type: str
+    script: str
+    similarity: float
+
+
+class TopicMatch(BaseModel):
+    topic: int
+    topic_category: int
+    text: str
+    similarity: float
+
+
 class ChatTurnRequest(BaseModel):
     user: int
     model: str
@@ -149,6 +167,8 @@ class ChatTurnResponse(BaseModel):
     conversation: ConversationResponse
     user_message: MessageResponse
     assistant_message: MessageResponse
+    matched_functions: List[FunctionMatch] = Field(default_factory=list)
+    matched_topics: List[TopicMatch] = Field(default_factory=list)
 
 
 class EmbeddingRequest(BaseModel):
@@ -671,14 +691,24 @@ async def create_conversation_chat_turn(
         raise HTTPException(status_code=404, detail="Konverzace byla odstraněna.")
 
     user_embedding = await _create_embedding(payload.content)
+    user_embedding_value = _vector_from_list(user_embedding)
     user_row = await DB.create_message(
         conversation_id,
         "user",
         payload.content,
         None,
-        _vector_from_list(user_embedding),
+        user_embedding_value,
     )
     user_row = _ensure_row(user_row, "Zpráva nebyla uložena.")
+
+    matched_function_rows = await DB.find_matching_functions(
+        user_embedding_value,
+        SIMILARITY_THRESHOLD,
+    )
+    matched_topic_rows = await DB.find_matching_topics(
+        user_embedding_value,
+        SIMILARITY_THRESHOLD,
+    )
 
     if conversation["title"] == "Nová konverzace":
         updated_title = _conversation_title_from_text(payload.content)
@@ -740,6 +770,27 @@ async def create_conversation_chat_turn(
             text=assistant_row["text"],
             token_count=assistant_row["token_count"],
         ),
+        matched_functions=[
+            FunctionMatch(
+                function=row["function"],
+                name=row["name"],
+                description=row["description"],
+                active=row["active"],
+                type=row["type"],
+                script=row["script"],
+                similarity=float(row["similarity"]),
+            )
+            for row in matched_function_rows
+        ],
+        matched_topics=[
+            TopicMatch(
+                topic=row["topic"],
+                topic_category=row["topic_category"],
+                text=row["text"],
+                similarity=float(row["similarity"]),
+            )
+            for row in matched_topic_rows
+        ],
     )
 
 

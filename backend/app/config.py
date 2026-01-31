@@ -125,3 +125,8 @@ class BackendConfig:
         parser = cls._ensure_loaded()
         value = parser.get("embedding", "api-key", fallback="").strip()
         return value or cls.llmApiKey()
+
+    @classmethod
+    def embeddingSimilarityThreshold(cls) -> float:
+        parser = cls._ensure_loaded()
+        return parser.getfloat("embedding", "similarity-threshold", fallback=0.6)

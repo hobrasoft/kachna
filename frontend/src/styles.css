@@ -341,6 +341,50 @@ textarea {
   white-space: pre-wrap;
 }
 
+.chat__matches {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #1f2937;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 13px;
+  color: #cbd5f5;
+}
+
+.chat__match-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat__match-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+}
+
+.chat__match-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat__match-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chat__match-score {
+  color: #7dd3fc;
+  font-variant-numeric: tabular-nums;
+}
+
 .chat__role {
   font-size: 12px;
   text-transform: uppercase;

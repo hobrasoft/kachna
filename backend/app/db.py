@@ -544,6 +544,49 @@ class Database:
             function_question_id,
         )
 
+    async def find_matching_functions(
+        self,
+        embedding_value: str,
+        threshold: float,
+    ) -> list[asyncpg.Record]:
+        return await self.fetch(
+            """
+            select distinct on (fq."function")
+                   fq."function",
+                   f.name,
+                   f.description,
+                   f.active,
+                   f.type,
+                   f.script,
+                   1 - (fq.embedding <=> $1::vector) as similarity
+              from functions_questions fq
+              join functions f on f."function" = fq."function"
+             where 1 - (fq.embedding <=> $1::vector) >= $2
+             order by fq."function", similarity desc
+            """,
+            embedding_value,
+            threshold,
+        )
+
+    async def find_matching_topics(
+        self,
+        embedding_value: str,
+        threshold: float,
+    ) -> list[asyncpg.Record]:
+        return await self.fetch(
+            """
+            select topic,
+                   topic_category,
+                   text,
+                   1 - (embedding <=> $1::vector) as similarity
+              from topics
+             where 1 - (embedding <=> $1::vector) >= $2
+             order by similarity desc, topic
+            """,
+            embedding_value,
+            threshold,
+        )
+
     async def list_functions(self) -> list[asyncpg.Record]:
         return await self.fetch(
             """
