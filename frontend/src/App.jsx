@@ -300,15 +300,14 @@ function UsersSection({ apiUrl }) {
       {error && <div className="form__error">{error}</div>}
       <div className="table">
         <div className="table__row table__head">
-          <span>ID</span>
           <span>Jméno</span>
           <span>Login</span>
+          <span>Role</span>
           <span>Akce</span>
         </div>
         {items.map((item) =>
           editing?.user === item.user ? (
             <div className="table__row" key={item.user}>
-              <span>{item.user}</span>
               <input
                 type="text"
                 value={editing.name}
@@ -323,6 +322,11 @@ function UsersSection({ apiUrl }) {
                   setEditing({ ...editing, login: event.target.value })
                 }
               />
+              <span>
+                {(item.roles ?? [])
+                  .map((role) => `${role.abbr} – ${role.name}`)
+                  .join(", ")}
+              </span>
               <div className="table__actions">
                 <button type="button" onClick={handleEditSave}>
                   Uložit
@@ -334,9 +338,13 @@ function UsersSection({ apiUrl }) {
             </div>
           ) : (
             <div className="table__row" key={item.user}>
-              <span>{item.user}</span>
               <span>{item.name}</span>
               <span>{item.login}</span>
+              <span>
+                {(item.roles ?? [])
+                  .map((role) => `${role.abbr} – ${role.name}`)
+                  .join(", ")}
+              </span>
               <div className="table__actions">
                 <button type="button" onClick={() => setEditing(item)}>
                   Upravit

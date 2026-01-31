@@ -140,6 +140,15 @@ class UserResponse(UserBase):
     user: int
 
 
+class UserRoleSummary(BaseModel):
+    abbr: str
+    name: str
+
+
+class UserWithRoles(UserResponse):
+    roles: List[UserRoleSummary]
+
+
 class RoleBase(BaseModel):
     system_prompt: int
     abbr: str
@@ -344,13 +353,24 @@ async def login(payload: LoginRequest) -> LoginResponse:
     )
 
 
-@app.get("/v1/users", response_model=List[UserResponse])
-async def list_users() -> List[UserResponse]:
+@app.get("/v1/users", response_model=List[UserWithRoles])
+async def list_users() -> List[UserWithRoles]:
     rows = await DB.list_users()
-    return [
-        UserResponse(user=row["user"], name=row["name"], login=row["login"])
-        for row in rows
-    ]
+    response: List[UserWithRoles] = []
+    for row in rows:
+        roles = await DB.get_user_roles(row["user"])
+        response.append(
+            UserWithRoles(
+                user=row["user"],
+                name=row["name"],
+                login=row["login"],
+                roles=[
+                    UserRoleSummary(abbr=role["abbr"], name=role["name"])
+                    for role in roles
+                ],
+            )
+        )
+    return response
 
 
 @app.post("/v1/users", response_model=UserResponse)
