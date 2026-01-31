@@ -87,21 +87,22 @@ textarea {
 }
 
 .content--chat {
-  padding: 32px;
+  padding: 0;
+  min-height: calc(100vh - 78px);
 }
 
 .chat-shell {
   display: flex;
-  gap: 24px;
+  gap: 0;
   align-items: stretch;
+  min-height: 100%;
 }
 
 .chat-sidebar {
-  width: 260px;
+  width: 220px;
   background: #0f172a;
-  border-radius: 16px;
-  border: 1px solid #1f2937;
-  padding: 16px;
+  border-right: 1px solid #1f2937;
+  padding: 24px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -300,6 +301,7 @@ textarea {
   gap: 20px;
   flex: 1;
   min-width: 0;
+  padding: 32px;
 }
 
 .chat__messages {

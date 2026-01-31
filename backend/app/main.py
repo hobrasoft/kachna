@@ -265,6 +265,7 @@ class FunctionBase(BaseModel):
     active: bool = True
     type: str
     script: str
+    user_roles: List[int] = Field(default_factory=list)
 
 
 class FunctionUpdate(BaseModel):
@@ -273,10 +274,12 @@ class FunctionUpdate(BaseModel):
     active: Optional[bool] = None
     type: Optional[str] = None
     script: Optional[str] = None
+    user_roles: Optional[List[int]] = None
 
 
 class FunctionResponse(FunctionBase):
     function: int
+    role_abbrs: List[str] = Field(default_factory=list)
 
 
 class FunctionQuestionBase(BaseModel):
@@ -1095,6 +1098,8 @@ async def list_functions() -> List[FunctionResponse]:
             active=row["active"],
             type=row["type"],
             script=row["script"],
+            user_roles=row["user_roles"],
+            role_abbrs=row["role_abbrs"],
         )
         for row in rows
     ]
@@ -1110,13 +1115,18 @@ async def create_function(payload: FunctionBase) -> FunctionResponse:
         payload.script,
     )
     row = _ensure_row(row, "Funkce nebyla vytvořena.")
+    await DB.replace_function_roles(row["function"], payload.user_roles)
+    updated = await DB.get_function(row["function"])
+    updated = _ensure_row(updated, "Funkce nenalezena.")
     return FunctionResponse(
-        function=row["function"],
-        name=row["name"],
-        description=row["description"],
-        active=row["active"],
-        type=row["type"],
-        script=row["script"],
+        function=updated["function"],
+        name=updated["name"],
+        description=updated["description"],
+        active=updated["active"],
+        type=updated["type"],
+        script=updated["script"],
+        user_roles=updated["user_roles"],
+        role_abbrs=updated["role_abbrs"],
     )
 
 
@@ -1131,6 +1141,8 @@ async def get_function(function_id: int) -> FunctionResponse:
         active=row["active"],
         type=row["type"],
         script=row["script"],
+        user_roles=row["user_roles"],
+        role_abbrs=row["role_abbrs"],
     )
 
 
@@ -1143,6 +1155,7 @@ async def update_function(function_id: int, payload: FunctionUpdate) -> Function
     active = payload.active if payload.active is not None else current["active"]
     type_value = payload.type if payload.type is not None else current["type"]
     script = payload.script if payload.script is not None else current["script"]
+    user_roles = payload.user_roles if payload.user_roles is not None else current["user_roles"]
     row = await DB.update_function(
         function_id,
         name,
@@ -1152,13 +1165,18 @@ async def update_function(function_id: int, payload: FunctionUpdate) -> Function
         script,
     )
     row = _ensure_row(row, "Funkce nebyla upravena.")
+    await DB.replace_function_roles(function_id, user_roles)
+    updated = await DB.get_function(function_id)
+    updated = _ensure_row(updated, "Funkce nenalezena.")
     return FunctionResponse(
-        function=row["function"],
-        name=row["name"],
-        description=row["description"],
-        active=row["active"],
-        type=row["type"],
-        script=row["script"],
+        function=updated["function"],
+        name=updated["name"],
+        description=updated["description"],
+        active=updated["active"],
+        type=updated["type"],
+        script=updated["script"],
+        user_roles=updated["user_roles"],
+        role_abbrs=updated["role_abbrs"],
     )
 
 

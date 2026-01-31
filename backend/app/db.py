@@ -547,9 +547,27 @@ class Database:
     async def list_functions(self) -> list[asyncpg.Record]:
         return await self.fetch(
             """
-            select function, name, description, active, type, script
+            select functions.function,
+                   functions.name,
+                   functions.description,
+                   functions.active,
+                   functions.type,
+                   functions.script,
+                   coalesce(
+                       array_agg(ur.user_role order by ur.name)
+                           filter (where ur.user_role is not null),
+                       '{}'::int[]
+                   ) as user_roles,
+                   coalesce(
+                       array_agg(ur.abbr order by ur.name)
+                           filter (where ur.abbr is not null),
+                       '{}'::text[]
+                   ) as role_abbrs
               from functions
-             order by name
+              left join role_has_function rhf on rhf.function = functions.function
+              left join user_roles ur on ur.user_role = rhf.user_role
+             group by functions.function
+             order by functions.name
             """,
         )
 
@@ -577,9 +595,27 @@ class Database:
     async def get_function(self, function_id: int) -> asyncpg.Record | None:
         return await self.fetchrow(
             """
-            select function, name, description, active, type, script
+            select functions.function,
+                   functions.name,
+                   functions.description,
+                   functions.active,
+                   functions.type,
+                   functions.script,
+                   coalesce(
+                       array_agg(ur.user_role order by ur.name)
+                           filter (where ur.user_role is not null),
+                       '{}'::int[]
+                   ) as user_roles,
+                   coalesce(
+                       array_agg(ur.abbr order by ur.name)
+                           filter (where ur.abbr is not null),
+                       '{}'::text[]
+                   ) as role_abbrs
               from functions
-             where function=$1
+              left join role_has_function rhf on rhf.function = functions.function
+              left join user_roles ur on ur.user_role = rhf.user_role
+             where functions.function=$1
+             group by functions.function
             """,
             function_id,
         )
@@ -610,6 +646,22 @@ class Database:
 
     async def delete_function(self, function_id: int) -> str:
         return await self.execute("delete from functions where function=$1", function_id)
+
+    async def replace_function_roles(self, function_id: int, role_ids: list[int]) -> None:
+        await self.execute(
+            "delete from role_has_function where function=$1",
+            function_id,
+        )
+        if not role_ids:
+            return
+        await self.execute(
+            """
+            insert into role_has_function (user_role, function)
+            select unnest($1::int[]), $2
+            """,
+            role_ids,
+            function_id,
+        )
 
 
 def load_database() -> Database:

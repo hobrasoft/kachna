@@ -678,7 +678,7 @@ function UsersSection({ apiUrl }) {
                 <span>{item.login}</span>
                 <span>
                   {(item.roles ?? [])
-                    .map((role) => `${role.abbr} – ${role.name}`)
+                    .map((role) => role.abbr)
                     .join(", ")}
                 </span>
                 <div className="table__actions">
@@ -1648,6 +1648,7 @@ function FunctionQuestionsSection({ apiUrl }) {
 
 function FunctionsSection({ apiUrl }) {
   const [items, setItems] = useState([]);
+  const [availableRoles, setAvailableRoles] = useState([]);
   const [form, setForm] = useState({
     function: null,
     name: "",
@@ -1655,9 +1656,20 @@ function FunctionsSection({ apiUrl }) {
     type: "",
     script: "",
     active: true,
+    user_roles: [],
   });
   const [view, setView] = useState("list");
   const [error, setError] = useState("");
+
+  const toggleRoleSelection = (currentRoles, roleId) => {
+    const next = new Set(currentRoles ?? []);
+    if (next.has(roleId)) {
+      next.delete(roleId);
+    } else {
+      next.add(roleId);
+    }
+    return Array.from(next);
+  };
 
   const resetForm = () =>
     setForm({
@@ -1667,6 +1679,7 @@ function FunctionsSection({ apiUrl }) {
       type: "",
       script: "",
       active: true,
+      user_roles: [],
     });
 
   const load = async () => {
@@ -1679,8 +1692,18 @@ function FunctionsSection({ apiUrl }) {
     setItems(await response.json());
   };
 
+  const loadRoles = async () => {
+    const response = await apiClient.get(apiUrl, "/v1/user-roles");
+    if (!response.ok) {
+      setError("Nepodařilo se načíst role.");
+      return;
+    }
+    setAvailableRoles(await response.json());
+  };
+
   useEffect(() => {
     load();
+    loadRoles();
   }, [apiUrl]);
 
   const handleSave = async (event) => {
@@ -1692,6 +1715,7 @@ function FunctionsSection({ apiUrl }) {
       type: form.type,
       script: form.script,
       active: form.active,
+      user_roles: form.user_roles,
     };
     const response = form.function
       ? await apiClient.put(
@@ -1745,6 +1769,7 @@ function FunctionsSection({ apiUrl }) {
       type: item.type ?? "",
       script: item.script ?? "",
       active: item.active ?? false,
+      user_roles: item.user_roles ?? [],
     });
     setView("form");
   };
@@ -1768,6 +1793,7 @@ function FunctionsSection({ apiUrl }) {
           <div className="table">
             <div className="table__row table__head">
               <span>Název</span>
+              <span>Role</span>
               <span>Typ</span>
               <span>Aktivní</span>
               <span>Akce</span>
@@ -1775,6 +1801,7 @@ function FunctionsSection({ apiUrl }) {
             {items.map((item) => (
               <div className="table__row" key={item.function}>
                 <span>{item.name}</span>
+                <span>{(item.role_abbrs ?? []).join(", ") || "-"}</span>
                 <span>{item.type}</span>
                 <span>{item.active ? "Ano" : "Ne"}</span>
                 <div className="table__actions">
@@ -1803,6 +1830,23 @@ function FunctionsSection({ apiUrl }) {
               onChange={(event) => setForm({ ...form, type: event.target.value })}
               required
             />
+          </div>
+          <div className="roles-list">
+            {availableRoles.map((role) => (
+              <label className="checkbox" key={role.user_role}>
+                <input
+                  type="checkbox"
+                  checked={form.user_roles.includes(role.user_role)}
+                  onChange={() =>
+                    setForm((prev) => ({
+                      ...prev,
+                      user_roles: toggleRoleSelection(prev.user_roles, role.user_role),
+                    }))
+                  }
+                />
+                {role.abbr} – {role.name}
+              </label>
+            ))}
           </div>
           <textarea
             placeholder="Popis"
