@@ -16,6 +16,8 @@ const defaultHeaders = {
   "Content-Type": "application/json",
 };
 
+const defaultChatModel = "local-model";
+
 const formatEmbedding = (embedding) =>
   Array.isArray(embedding) ? embedding.join(", ") : "";
 
@@ -71,7 +73,7 @@ function LoginForm({ onLogin }) {
     <div className="login">
       <div className="login__panel">
         <h1>Kachna</h1>
-        <p>Přihlas se pro správu systému.</p>
+        <p>Přihlas se do chatu.</p>
         <form className="form" onSubmit={handleSubmit}>
           <label>
             Login
@@ -100,6 +102,107 @@ function LoginForm({ onLogin }) {
         </form>
       </div>
     </div>
+  );
+}
+
+function ChatPanel({ apiUrl }) {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [model, setModel] = useState(defaultChatModel);
+
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/v1/models`);
+        if (!response.ok) {
+          return;
+        }
+        const data = await response.json();
+        const firstModel = data?.data?.[0]?.id;
+        if (firstModel) {
+          setModel(firstModel);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    loadModels();
+  }, [apiUrl]);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    const trimmed = input.trim();
+    if (!trimmed || isLoading) {
+      return;
+    }
+
+    const nextMessages = [...messages, { role: "user", content: trimmed }];
+    setMessages(nextMessages);
+    setInput("");
+    setError("");
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(`${apiUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: defaultHeaders,
+        body: JSON.stringify({ model, messages: nextMessages }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Nepodařilo se získat odpověď.");
+      }
+
+      const data = await response.json();
+      const reply = data?.choices?.[0]?.message?.content?.trim();
+      if (!reply) {
+        throw new Error("Odpověď je prázdná.");
+      }
+      setMessages([...nextMessages, { role: "assistant", content: reply }]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <section className="chat">
+      <div className="chat__messages">
+        {messages.length === 0 ? (
+          <div className="chat__empty">Začni konverzaci.</div>
+        ) : (
+          messages.map((message, index) => (
+            <div
+              key={`${message.role}-${index}`}
+              className={`chat__message chat__message--${message.role}`}
+            >
+              <div className="chat__role">
+                {message.role === "user" ? "Ty" : "Kachna"}
+              </div>
+              <p>{message.content}</p>
+            </div>
+          ))
+        )}
+      </div>
+      <form className="chat__form" onSubmit={handleSubmit}>
+        <textarea
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          placeholder="Napiš zprávu…"
+          rows={3}
+        />
+        <div className="chat__actions">
+          {error && <span className="chat__error">{error}</span>}
+          <button type="submit" disabled={isLoading}>
+            {isLoading ? "Odesílám…" : "Odeslat"}
+          </button>
+        </div>
+      </form>
+    </section>
   );
 }
 
@@ -972,7 +1075,7 @@ function FunctionsSection({ apiUrl }) {
   );
 }
 
-function AdminPanel({ user, onLogout }) {
+function AdminPanel({ apiUrl }) {
   const sections = useMemo(
     () => [
       { key: "users", label: "Uživatelé", component: UsersSection },
@@ -987,54 +1090,86 @@ function AdminPanel({ user, onLogout }) {
   const activeSection = sections.find((section) => section.key === activeKey);
 
   return (
-    <div className="app">
-      <header className="app__header">
-        <div>
-          <h1>Kachna</h1>
-          <span>Admin dashboard</span>
-        </div>
-        <div className="app__user">
-          <span>
-            {user.name} ({user.login})
-          </span>
-          <button type="button" onClick={onLogout}>
-            Odhlásit
+    <div className="app__body">
+      <nav className="tabs">
+        {sections.map((section) => (
+          <button
+            key={section.key}
+            type="button"
+            className={section.key === activeKey ? "active" : ""}
+            onClick={() => setActiveKey(section.key)}
+          >
+            {section.label}
           </button>
-        </div>
-      </header>
-      <div className="app__body">
-        <nav className="tabs">
-          {sections.map((section) => (
-            <button
-              key={section.key}
-              type="button"
-              className={section.key === activeKey ? "active" : ""}
-              onClick={() => setActiveKey(section.key)}
-            >
-              {section.label}
-            </button>
-          ))}
-        </nav>
-        <main className="content">
-          {activeSection && (
-            <activeSection.component apiUrl={API_URL} />
-          )}
-        </main>
-      </div>
+        ))}
+      </nav>
+      <main className="content">
+        {activeSection && (
+          <activeSection.component apiUrl={apiUrl} />
+        )}
+      </main>
     </div>
   );
 }
 
 export default function App() {
   const [user, setUser] = useState(emptyUser);
+  const [activeView, setActiveView] = useState("chat");
+
+  const hasAdminAccess = user.roles?.some((role) => role.admin);
+
+  const handleLogin = (data) => {
+    setUser(data);
+    setActiveView("chat");
+  };
 
   const handleLogout = () => {
     setUser(emptyUser);
+    setActiveView("chat");
   };
 
   return user.user ? (
-    <AdminPanel user={user} onLogout={handleLogout} />
+    <div className="app">
+      <header className="app__header">
+        <div className="app__brand">
+          <h1>Kachna</h1>
+          <div className="app__nav">
+            <button
+              type="button"
+              className={activeView === "chat" ? "active" : ""}
+              onClick={() => setActiveView("chat")}
+            >
+              Chat
+            </button>
+            {hasAdminAccess && (
+              <button
+                type="button"
+                className={activeView === "admin" ? "active" : ""}
+                onClick={() => setActiveView("admin")}
+              >
+                Administrace
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="app__user">
+          <span>
+            {user.name} ({user.login})
+          </span>
+          <button type="button" onClick={handleLogout}>
+            Odhlásit
+          </button>
+        </div>
+      </header>
+      {activeView === "admin" && hasAdminAccess ? (
+        <AdminPanel apiUrl={API_URL} />
+      ) : (
+        <main className="content content--chat">
+          <ChatPanel apiUrl={API_URL} />
+        </main>
+      )}
+    </div>
   ) : (
-    <LoginForm onLogin={setUser} />
+    <LoginForm onLogin={handleLogin} />
   );
 }
