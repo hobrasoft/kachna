@@ -48,3 +48,13 @@ npm run dev
 Frontend očekává API na `http://localhost:8000`. Lze změnit přes `VITE_API_URL`
 nebo v konfiguračním souboru (`~/.kachna.conf` nebo `/etc/kachna.conf`) pomocí
 sekce `[frontend]` a klíče `api_url`.
+
+## AI Coding Guidelines
+
+This project uses AI-assisted code generation.
+
+All generated or modified code MUST follow the rules defined in
+[AI_INSTRUCTIONS.md](./AI_INSTRUCTIONS.md).
+
+These rules are considered authoritative across the whole project
+(frontend and backend).
