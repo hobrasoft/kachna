@@ -304,6 +304,13 @@ textarea {
   font-size: 14px;
 }
 
+.form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
 .checkbox {
   display: inline-flex;
   align-items: center;

@@ -208,15 +208,16 @@ function ChatPanel({ apiUrl }) {
 
 function UsersSection({ apiUrl }) {
   const [items, setItems] = useState([]);
+  const [availableRoles, setAvailableRoles] = useState([]);
+  const [error, setError] = useState("");
+  const [screen, setScreen] = useState("list");
   const [form, setForm] = useState({
+    user: null,
     name: "",
     login: "",
     password: "",
     roles: [],
   });
-  const [availableRoles, setAvailableRoles] = useState([]);
-  const [editing, setEditing] = useState(null);
-  const [error, setError] = useState("");
 
   const load = async () => {
     setError("");
@@ -254,19 +255,24 @@ function UsersSection({ apiUrl }) {
     return Array.from(next);
   };
 
-  const handleCreate = async (event) => {
-    event.preventDefault();
+  const handleCreate = async () => {
     setError("");
     const response = await fetch(`${apiUrl}/v1/users`, {
       method: "POST",
       headers: defaultHeaders,
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        name: form.name,
+        login: form.login,
+        password: form.password,
+        roles: form.roles,
+      }),
     });
     if (!response.ok) {
       setError("Uživatel se nepodařil vytvořit.");
       return;
     }
-    setForm({ name: "", login: "", password: "", roles: [] });
+    setForm({ user: null, name: "", login: "", password: "", roles: [] });
+    setScreen("list");
     await load();
   };
 
@@ -278,156 +284,167 @@ function UsersSection({ apiUrl }) {
       setError("Uživatel se nepodařil odstranit.");
       return;
     }
+    if (form.user === userId) {
+      setForm({ user: null, name: "", login: "", password: "", roles: [] });
+      setScreen("list");
+    }
     await load();
   };
 
   const handleEditSave = async () => {
-    if (!editing) {
+    if (!form.user) {
       return;
     }
-    const response = await fetch(`${apiUrl}/v1/users/${editing.user}`, {
+    const payload = {
+      name: form.name,
+      login: form.login,
+      roles: form.roles,
+    };
+    if (form.password) {
+      payload.password = form.password;
+    }
+    const response = await fetch(`${apiUrl}/v1/users/${form.user}`, {
       method: "PUT",
       headers: defaultHeaders,
-      body: JSON.stringify(editing),
+      body: JSON.stringify(payload),
     });
     if (!response.ok) {
       setError("Uživatel se nepodařil upravit.");
       return;
     }
-    setEditing(null);
+    setForm({ user: null, name: "", login: "", password: "", roles: [] });
+    setScreen("list");
     await load();
+  };
+
+  const handleSave = async (event) => {
+    event.preventDefault();
+    if (form.user) {
+      await handleEditSave();
+      return;
+    }
+    await handleCreate();
+  };
+
+  const handleCancel = () => {
+    setForm({ user: null, name: "", login: "", password: "", roles: [] });
+    setError("");
+    setScreen("list");
+  };
+
+  const handleAddNew = () => {
+    setForm({ user: null, name: "", login: "", password: "", roles: [] });
+    setError("");
+    setScreen("form");
+  };
+
+  const handleEditOpen = (item) => {
+    setForm({
+      user: item.user,
+      name: item.name ?? "",
+      login: item.login ?? "",
+      password: "",
+      roles: (item.roles ?? []).map((role) => role.user_role),
+    });
+    setError("");
+    setScreen("form");
   };
 
   return (
     <SectionCard title="Správa uživatelů">
-      <form className="form form--inline" onSubmit={handleCreate}>
-        <input
-          type="text"
-          placeholder="Jméno"
-          value={form.name}
-          onChange={(event) => setForm({ ...form, name: event.target.value })}
-          required
-        />
-        <input
-          type="text"
-          placeholder="Login"
-          value={form.login}
-          onChange={(event) => setForm({ ...form, login: event.target.value })}
-          required
-        />
-        <input
-          type="password"
-          placeholder="Heslo"
-          value={form.password}
-          onChange={(event) => setForm({ ...form, password: event.target.value })}
-          required
-        />
-        <div className="roles-list">
-          {availableRoles.map((role) => (
-            <label className="checkbox" key={role.user_role}>
-              <input
-                type="checkbox"
-                checked={form.roles.includes(role.user_role)}
-                onChange={() =>
-                  setForm((prev) => ({
-                    ...prev,
-                    roles: toggleRoleSelection(prev.roles, role.user_role),
-                  }))
-                }
-              />
-              {role.abbr} – {role.name}
-            </label>
-          ))}
-        </div>
-        <button type="submit">Přidat</button>
-      </form>
-      {error && <div className="form__error">{error}</div>}
-      <div className="table">
-        <div className="table__row table__head">
-          <span>Jméno</span>
-          <span>Login</span>
-          <span>Role</span>
-          <span>Akce</span>
-        </div>
-        {items.map((item) =>
-          editing?.user === item.user ? (
-            <div className="table__row" key={item.user}>
-              <input
-                type="text"
-                value={editing.name}
-                onChange={(event) =>
-                  setEditing({ ...editing, name: event.target.value })
-                }
-              />
-              <input
-                type="text"
-                value={editing.login}
-                onChange={(event) =>
-                  setEditing({ ...editing, login: event.target.value })
-                }
-              />
-              <div className="roles-list">
-                {availableRoles.map((role) => (
-                  <label className="checkbox" key={role.user_role}>
-                    <input
-                      type="checkbox"
-                      checked={(editing.roles ?? []).includes(role.user_role)}
-                      onChange={() =>
-                        setEditing((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                roles: toggleRoleSelection(
-                                  prev.roles,
-                                  role.user_role,
-                                ),
-                              }
-                            : prev,
-                        )
-                      }
-                    />
-                    {role.abbr} – {role.name}
-                  </label>
-                ))}
-              </div>
-              <div className="table__actions">
-                <button type="button" onClick={handleEditSave}>
-                  Uložit
-                </button>
-                <button type="button" onClick={() => setEditing(null)}>
-                  Zrušit
-                </button>
-              </div>
+      {screen === "list" ? (
+        <>
+          <button type="button" onClick={handleAddNew}>
+            Přidat
+          </button>
+          {error && <div className="form__error">{error}</div>}
+          <div className="table">
+            <div className="table__row table__head">
+              <span>Jméno</span>
+              <span>Login</span>
+              <span>Role</span>
+              <span>Akce</span>
             </div>
-          ) : (
-            <div className="table__row" key={item.user}>
-              <span>{item.name}</span>
-              <span>{item.login}</span>
-              <span>
-                {(item.roles ?? [])
-                  .map((role) => `${role.abbr} – ${role.name}`)
-                  .join(", ")}
-              </span>
-              <div className="table__actions">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setEditing({
-                      ...item,
-                      roles: (item.roles ?? []).map((role) => role.user_role),
-                    })
+            {items.map((item) => (
+              <div className="table__row" key={item.user}>
+                <span>{item.name}</span>
+                <span>{item.login}</span>
+                <span>
+                  {(item.roles ?? [])
+                    .map((role) => `${role.abbr} – ${role.name}`)
+                    .join(", ")}
+                </span>
+                <div className="table__actions">
+                  <button type="button" onClick={() => handleEditOpen(item)}>
+                    Upravit
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <form className="form form--stack" onSubmit={handleSave}>
+          <div className="form__row">
+            <input
+              type="text"
+              placeholder="Jméno"
+              value={form.name}
+              onChange={(event) => setForm({ ...form, name: event.target.value })}
+              required
+            />
+            <input
+              type="text"
+              placeholder="Login"
+              value={form.login}
+              onChange={(event) =>
+                setForm({ ...form, login: event.target.value })
+              }
+              required
+            />
+          </div>
+          <input
+            type="password"
+            placeholder={form.user ? "Nové heslo (volitelné)" : "Heslo"}
+            value={form.password}
+            onChange={(event) =>
+              setForm({ ...form, password: event.target.value })
+            }
+            required={!form.user}
+          />
+          <div className="roles-list">
+            {availableRoles.map((role) => (
+              <label className="checkbox" key={role.user_role}>
+                <input
+                  type="checkbox"
+                  checked={form.roles.includes(role.user_role)}
+                  onChange={() =>
+                    setForm((prev) => ({
+                      ...prev,
+                      roles: toggleRoleSelection(prev.roles, role.user_role),
+                    }))
                   }
-                >
-                  Upravit
-                </button>
-                <button type="button" onClick={() => handleDelete(item.user)}>
-                  Smazat
-                </button>
-              </div>
-            </div>
-          ),
-        )}
-      </div>
+                />
+                {role.abbr} – {role.name}
+              </label>
+            ))}
+          </div>
+          {error && <div className="form__error">{error}</div>}
+          <div className="form__actions">
+            <button type="button" onClick={handleCancel}>
+              Zrušit
+            </button>
+            <button type="submit">Uložit</button>
+            <button
+              type="button"
+              onClick={() => handleDelete(form.user)}
+              disabled={!form.user}
+            >
+              Smazat
+            </button>
+          </div>
+        </form>
+      )}
     </SectionCard>
   );
 }
