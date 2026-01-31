@@ -128,12 +128,14 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    roles: Optional[List[int]] = None
 
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     login: Optional[str] = None
     password: Optional[str] = None
+    roles: Optional[List[int]] = None
 
 
 class UserResponse(UserBase):
@@ -141,6 +143,7 @@ class UserResponse(UserBase):
 
 
 class UserRoleSummary(BaseModel):
+    user_role: int
     abbr: str
     name: str
 
@@ -365,7 +368,11 @@ async def list_users() -> List[UserWithRoles]:
                 name=row["name"],
                 login=row["login"],
                 roles=[
-                    UserRoleSummary(abbr=role["abbr"], name=role["name"])
+                    UserRoleSummary(
+                        user_role=role["user_role"],
+                        abbr=role["abbr"],
+                        name=role["name"],
+                    )
                     for role in roles
                 ],
             )
@@ -377,6 +384,8 @@ async def list_users() -> List[UserWithRoles]:
 async def create_user(payload: UserCreate) -> UserResponse:
     row = await DB.create_user(payload.name, payload.login, payload.password)
     row = _ensure_row(row, "Uživatel nebyl vytvořen.")
+    if payload.roles is not None:
+        await DB.replace_user_roles(row["user"], payload.roles)
     return UserResponse(user=row["user"], name=row["name"], login=row["login"])
 
 
@@ -396,6 +405,8 @@ async def update_user(user_id: int, payload: UserUpdate) -> UserResponse:
     password = payload.password if payload.password is not None else current["password"]
     row = await DB.update_user(user_id, name, login_value, password)
     row = _ensure_row(row, "Uživatel nebyl upraven.")
+    if payload.roles is not None:
+        await DB.replace_user_roles(user_id, payload.roles)
     return UserResponse(user=row["user"], name=row["name"], login=row["login"])
 
 

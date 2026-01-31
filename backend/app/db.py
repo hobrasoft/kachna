@@ -129,6 +129,21 @@ class Database:
     async def delete_user(self, user_id: int) -> str:
         return await self.execute("delete from users where \"user\"=$1", user_id)
 
+    async def replace_user_roles(self, user_id: int, role_ids: list[int]) -> None:
+        if self._pool is None:
+            raise RuntimeError("Database pool is not initialized.")
+        async with self._pool.acquire() as connection:
+            async with connection.transaction():
+                await connection.execute(
+                    "delete from user_has_role where \"user\"=$1",
+                    user_id,
+                )
+                if role_ids:
+                    await connection.executemany(
+                        "insert into user_has_role (\"user\", user_role) values ($1, $2)",
+                        [(user_id, role_id) for role_id in role_ids],
+                    )
+
     async def list_roles(self) -> list[asyncpg.Record]:
         return await self.fetch(
             """

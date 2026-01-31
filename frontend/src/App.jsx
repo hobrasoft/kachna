@@ -208,7 +208,13 @@ function ChatPanel({ apiUrl }) {
 
 function UsersSection({ apiUrl }) {
   const [items, setItems] = useState([]);
-  const [form, setForm] = useState({ name: "", login: "", password: "" });
+  const [form, setForm] = useState({
+    name: "",
+    login: "",
+    password: "",
+    roles: [],
+  });
+  const [availableRoles, setAvailableRoles] = useState([]);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
 
@@ -223,9 +229,30 @@ function UsersSection({ apiUrl }) {
     setItems(data);
   };
 
+  const loadRoles = async () => {
+    setError("");
+    const response = await fetch(`${apiUrl}/v1/user-roles`);
+    if (!response.ok) {
+      setError("Nepodařilo se načíst role.");
+      return;
+    }
+    setAvailableRoles(await response.json());
+  };
+
   useEffect(() => {
     load();
+    loadRoles();
   }, [apiUrl]);
+
+  const toggleRoleSelection = (currentRoles, roleId) => {
+    const next = new Set(currentRoles ?? []);
+    if (next.has(roleId)) {
+      next.delete(roleId);
+    } else {
+      next.add(roleId);
+    }
+    return Array.from(next);
+  };
 
   const handleCreate = async (event) => {
     event.preventDefault();
@@ -239,7 +266,7 @@ function UsersSection({ apiUrl }) {
       setError("Uživatel se nepodařil vytvořit.");
       return;
     }
-    setForm({ name: "", login: "", password: "" });
+    setForm({ name: "", login: "", password: "", roles: [] });
     await load();
   };
 
@@ -295,6 +322,23 @@ function UsersSection({ apiUrl }) {
           onChange={(event) => setForm({ ...form, password: event.target.value })}
           required
         />
+        <div className="roles-list">
+          {availableRoles.map((role) => (
+            <label className="checkbox" key={role.user_role}>
+              <input
+                type="checkbox"
+                checked={form.roles.includes(role.user_role)}
+                onChange={() =>
+                  setForm((prev) => ({
+                    ...prev,
+                    roles: toggleRoleSelection(prev.roles, role.user_role),
+                  }))
+                }
+              />
+              {role.abbr} – {role.name}
+            </label>
+          ))}
+        </div>
         <button type="submit">Přidat</button>
       </form>
       {error && <div className="form__error">{error}</div>}
@@ -322,11 +366,30 @@ function UsersSection({ apiUrl }) {
                   setEditing({ ...editing, login: event.target.value })
                 }
               />
-              <span>
-                {(item.roles ?? [])
-                  .map((role) => `${role.abbr} – ${role.name}`)
-                  .join(", ")}
-              </span>
+              <div className="roles-list">
+                {availableRoles.map((role) => (
+                  <label className="checkbox" key={role.user_role}>
+                    <input
+                      type="checkbox"
+                      checked={(editing.roles ?? []).includes(role.user_role)}
+                      onChange={() =>
+                        setEditing((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                roles: toggleRoleSelection(
+                                  prev.roles,
+                                  role.user_role,
+                                ),
+                              }
+                            : prev,
+                        )
+                      }
+                    />
+                    {role.abbr} – {role.name}
+                  </label>
+                ))}
+              </div>
               <div className="table__actions">
                 <button type="button" onClick={handleEditSave}>
                   Uložit
@@ -346,7 +409,15 @@ function UsersSection({ apiUrl }) {
                   .join(", ")}
               </span>
               <div className="table__actions">
-                <button type="button" onClick={() => setEditing(item)}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditing({
+                      ...item,
+                      roles: (item.roles ?? []).map((role) => role.user_role),
+                    })
+                  }
+                >
                   Upravit
                 </button>
                 <button type="button" onClick={() => handleDelete(item.user)}>
