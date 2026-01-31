@@ -180,7 +180,6 @@ class SystemPromptSummary(BaseModel):
 
 
 class TopicCategoryBase(BaseModel):
-    topic_category: str
     name: str
     description: str
 
@@ -191,17 +190,17 @@ class TopicCategoryUpdate(BaseModel):
 
 
 class TopicCategoryResponse(TopicCategoryBase):
-    pass
+    topic_category: int
 
 
 class TopicBase(BaseModel):
-    topic_category: str
+    topic_category: int
     text: str
     embedding: List[float]
 
 
 class TopicUpdate(BaseModel):
-    topic_category: Optional[str] = None
+    topic_category: Optional[int] = None
     text: Optional[str] = None
     embedding: Optional[List[float]] = None
 
@@ -526,7 +525,6 @@ async def list_topic_categories() -> List[TopicCategoryResponse]:
 @app.post("/v1/topic-categories", response_model=TopicCategoryResponse)
 async def create_topic_category(payload: TopicCategoryBase) -> TopicCategoryResponse:
     row = await DB.create_topic_category(
-        payload.topic_category,
         payload.name,
         payload.description,
     )
@@ -539,7 +537,7 @@ async def create_topic_category(payload: TopicCategoryBase) -> TopicCategoryResp
 
 
 @app.get("/v1/topic-categories/{topic_category}", response_model=TopicCategoryResponse)
-async def get_topic_category(topic_category: str) -> TopicCategoryResponse:
+async def get_topic_category(topic_category: int) -> TopicCategoryResponse:
     row = await DB.get_topic_category(topic_category)
     row = _ensure_row(row, "Kategorie tématu nenalezena.")
     return TopicCategoryResponse(
@@ -551,7 +549,7 @@ async def get_topic_category(topic_category: str) -> TopicCategoryResponse:
 
 @app.put("/v1/topic-categories/{topic_category}", response_model=TopicCategoryResponse)
 async def update_topic_category(
-    topic_category: str,
+    topic_category: int,
     payload: TopicCategoryUpdate,
 ) -> TopicCategoryResponse:
     current = await DB.get_topic_category(topic_category)
@@ -568,7 +566,7 @@ async def update_topic_category(
 
 
 @app.delete("/v1/topic-categories/{topic_category}")
-async def delete_topic_category(topic_category: str) -> dict:
+async def delete_topic_category(topic_category: int) -> dict:
     result = await DB.delete_topic_category(topic_category)
     if result.split()[-1] == "0":
         raise HTTPException(status_code=404, detail="Kategorie tématu nenalezena.")

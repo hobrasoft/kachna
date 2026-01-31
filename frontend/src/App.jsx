@@ -660,7 +660,6 @@ function RolesSection({ apiUrl }) {
 function TopicCategoriesSection({ apiUrl }) {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState({
-    topic_category: "",
     name: "",
     description: "",
   });
@@ -683,7 +682,7 @@ function TopicCategoriesSection({ apiUrl }) {
   }, [apiUrl]);
 
   const startCreate = () => {
-    setForm({ topic_category: "", name: "", description: "" });
+    setForm({ name: "", description: "" });
     setEditingId(null);
     setError("");
     setView("form");
@@ -691,7 +690,6 @@ function TopicCategoriesSection({ apiUrl }) {
 
   const startEdit = (item) => {
     setForm({
-      topic_category: item.topic_category,
       name: item.name,
       description: item.description,
     });
@@ -701,7 +699,7 @@ function TopicCategoriesSection({ apiUrl }) {
   };
 
   const handleCancel = () => {
-    setForm({ topic_category: "", name: "", description: "" });
+    setForm({ name: "", description: "" });
     setEditingId(null);
     setError("");
     setView("list");
@@ -760,14 +758,12 @@ function TopicCategoriesSection({ apiUrl }) {
           {error && <div className="form__error">{error}</div>}
           <div className="table">
             <div className="table__row table__head">
-              <span>Kód</span>
               <span>Název</span>
               <span>Popis</span>
               <span>Akce</span>
             </div>
             {items.map((item) => (
               <div className="table__row" key={item.topic_category}>
-                <span>{item.topic_category}</span>
                 <span>{item.name}</span>
                 <span>{item.description}</span>
                 <div className="table__actions">
@@ -782,17 +778,9 @@ function TopicCategoriesSection({ apiUrl }) {
       ) : (
         <>
           <form className="form form--stack" onSubmit={handleSave}>
-            <label>
-              Kód kategorie
-              <input
-                type="text"
-                value={form.topic_category}
-                onChange={(event) =>
-                  setForm({ ...form, topic_category: event.target.value })
-                }
-                required
-              />
-            </label>
+            {editingId && (
+              <div className="form__info">Kód kategorie: {editingId}</div>
+            )}
             <label>
               Název
               <input
@@ -858,8 +846,13 @@ function TopicsSection({ apiUrl }) {
   const handleCreate = async (event) => {
     event.preventDefault();
     setError("");
+    const topicCategoryValue = Number(form.topic_category);
+    if (!Number.isInteger(topicCategoryValue)) {
+      setError("Kategorie musí být číslo.");
+      return;
+    }
     const payload = {
-      topic_category: form.topic_category,
+      topic_category: topicCategoryValue,
       text: form.text,
       embedding: parseEmbeddingInput(form.embedding),
     };
@@ -891,8 +884,14 @@ function TopicsSection({ apiUrl }) {
     if (!editing) {
       return;
     }
+    const topicCategoryValue = Number(editing.topic_category);
+    if (!Number.isInteger(topicCategoryValue)) {
+      setError("Kategorie musí být číslo.");
+      return;
+    }
     const payload = {
       ...editing,
+      topic_category: topicCategoryValue,
       embedding: parseEmbeddingInput(editing.embedding),
     };
     const response = await fetch(`${apiUrl}/v1/topics/${editing.topic}`, {
@@ -913,7 +912,7 @@ function TopicsSection({ apiUrl }) {
       <form className="form form--stack" onSubmit={handleCreate}>
         <div className="form__row">
           <input
-            type="text"
+            type="number"
             placeholder="Kategorie"
             value={form.topic_category}
             onChange={(event) =>
@@ -953,7 +952,7 @@ function TopicsSection({ apiUrl }) {
             <div className="table__row" key={item.topic}>
               <span>{item.topic}</span>
               <input
-                type="text"
+                type="number"
                 value={editing.topic_category}
                 onChange={(event) =>
                   setEditing({

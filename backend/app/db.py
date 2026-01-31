@@ -227,22 +227,20 @@ class Database:
 
     async def create_topic_category(
         self,
-        topic_category: str,
         name: str,
         description: str,
     ) -> asyncpg.Record | None:
         return await self.fetchrow(
             """
-            insert into topic_categories (topic_category, name, description)
-            values ($1, $2, $3)
+            insert into topic_categories (name, description)
+            values ($1, $2)
             returning topic_category, name, description
             """,
-            topic_category,
             name,
             description,
         )
 
-    async def get_topic_category(self, topic_category: str) -> asyncpg.Record | None:
+    async def get_topic_category(self, topic_category: int) -> asyncpg.Record | None:
         return await self.fetchrow(
             """
             select topic_category, name, description
@@ -254,7 +252,7 @@ class Database:
 
     async def update_topic_category(
         self,
-        topic_category: str,
+        topic_category: int,
         name: str,
         description: str,
     ) -> asyncpg.Record | None:
@@ -270,7 +268,7 @@ class Database:
             topic_category,
         )
 
-    async def delete_topic_category(self, topic_category: str) -> str:
+    async def delete_topic_category(self, topic_category: int) -> str:
         return await self.execute(
             "delete from topic_categories where topic_category=$1",
             topic_category,
@@ -287,7 +285,7 @@ class Database:
 
     async def create_topic(
         self,
-        topic_category: str,
+        topic_category: int,
         text: str,
         embedding_value: str,
     ) -> asyncpg.Record | None:
@@ -315,7 +313,7 @@ class Database:
     async def update_topic(
         self,
         topic_id: int,
-        topic_category: str,
+        topic_category: int,
         text: str,
         embedding_value: str,
     ) -> asyncpg.Record | None:
