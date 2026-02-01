@@ -361,6 +361,14 @@ function ChatPanel({ apiUrl, user }) {
       const matchedTopics = Array.isArray(data?.matched_topics)
         ? data.matched_topics
         : [];
+      const sortBySimilarity = (items, getLabel) =>
+        [...items].sort((a, b) => {
+          const diff = (b?.similarity ?? 0) - (a?.similarity ?? 0);
+          if (diff !== 0) {
+            return diff;
+          }
+          return (getLabel(a) ?? "").localeCompare(getLabel(b) ?? "");
+        });
       if (data?.conversation) {
         setConversations((prev) =>
           prev.map((item) =>
@@ -376,8 +384,8 @@ function ChatPanel({ apiUrl, user }) {
           role: "assistant",
           content: reply,
           matches: {
-            functions: matchedFunctions,
-            topics: matchedTopics,
+            functions: sortBySimilarity(matchedFunctions, (item) => item?.name),
+            topics: sortBySimilarity(matchedTopics, (item) => item?.text),
           },
         },
       ]);

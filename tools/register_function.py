@@ -126,14 +126,17 @@ async def _register_function(script_path: Path) -> None:
     db = load_database()
     await db.connect()
     try:
-        await db.upsert_function_with_questions(
+        row = await db.upsert_function_with_questions(
             name=description["name"],
             description=description["description"],
-            active=False,
+            active=True,
             type_value="shell",
             script=script_name,
             questions=questions_with_embeddings,
         )
+        roles = await db.list_roles()
+        admin_role_ids = [role["user_role"] for role in roles if role["admin"]]
+        await db.replace_function_roles(row["function"], admin_role_ids)
     finally:
         await db.disconnect()
 
