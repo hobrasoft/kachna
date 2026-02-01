@@ -1,5 +1,8 @@
+import asyncio
 import json
 import re
+import shlex
+from pathlib import Path
 from datetime import datetime
 from typing import Any, List, Optional
 
@@ -26,7 +29,9 @@ EMBEDDING_TIMEOUT_S = BackendConfig.embeddingTimeoutSeconds()
 CHAT_API_KEY = BackendConfig.chatApiKey()
 EMBEDDING_API_KEY = BackendConfig.embeddingApiKey()
 SIMILARITY_THRESHOLD = BackendConfig.embeddingSimilarityThreshold()
+FUNCTION_SIMILARITY_THRESHOLD = 0.9
 DB = load_database()
+FUNCTIONS_ROOT = Path(__file__).resolve().parents[2] / "functions"
 
 
 
@@ -310,6 +315,41 @@ async def _build_system_prompt_for_user(user_id: int) -> str:
 
 def _vector_from_list(values: List[float]) -> str:
     return "[" + ",".join(str(value) for value in values) + "]"
+
+
+async def _execute_function_script(script: str) -> Any:
+    if not script.strip():
+        raise HTTPException(status_code=502, detail="Funkce nemá definovaný skript.")
+    args = shlex.split(script)
+    if not args:
+        raise HTTPException(status_code=502, detail="Funkce nemá definovaný skript.")
+    command = args[0]
+    if not Path(command).is_absolute():
+        candidate = FUNCTIONS_ROOT / command
+        if candidate.exists():
+            args[0] = str(candidate)
+    process = await asyncio.create_subprocess_exec(
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await process.communicate()
+    if process.returncode != 0:
+        error_message = stderr.decode().strip() or stdout.decode().strip()
+        raise HTTPException(
+            status_code=502,
+            detail=error_message or "Spuštění funkce selhalo.",
+        )
+    output = stdout.decode().strip()
+    if not output:
+        raise HTTPException(status_code=502, detail="Funkce nevrátila žádná data.")
+    try:
+        return json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Funkce nevrátila JSON: {exc.msg}",
+        ) from exc
 
 
 def _parse_vector(value: Any) -> List[float]:
@@ -692,6 +732,18 @@ async def create_conversation_chat_turn(
         user_embedding_value,
         SIMILARITY_THRESHOLD,
     )
+    selected_function = next(
+        (
+            row
+            for row in sorted(
+                matched_function_rows,
+                key=lambda row: float(row["similarity"]),
+                reverse=True,
+            )
+            if row["active"] and float(row["similarity"]) > FUNCTION_SIMILARITY_THRESHOLD
+        ),
+        None,
+    )
 
     if conversation["title"] == "Nová konverzace":
         updated_title = _conversation_title_from_text(payload.content)
@@ -702,24 +754,31 @@ async def create_conversation_chat_turn(
         if updated_conversation is not None:
             conversation = updated_conversation
 
-    history_rows = await DB.list_messages(conversation_id)
-    history_messages = [
-        ChatMessage(role=row["role"], content=row["text"]) for row in history_rows
-    ]
-    data = await _forward_to_llm(
-        CHAT_BASE_URL,
-        "/v1/chat/completions",
-        CHAT_TIMEOUT_S,
-        CHAT_API_KEY,
-        ChatCompletionRequest(model=payload.model, messages=history_messages).model_dump(),
-    )
-    data = _sanitize_llm_response(data)
-    choice = (data.get("choices") or [{}])[0]
-    message = choice.get("message") if isinstance(choice, dict) else {}
-    content = message.get("content") if isinstance(message, dict) else None
-    if not isinstance(content, str) or not content.strip():
-        raise HTTPException(status_code=502, detail="Odpověď je prázdná.")
-    reply = content.strip()
+    if selected_function is not None:
+        function_result = await _execute_function_script(selected_function["script"])
+        reply = json.dumps(function_result, ensure_ascii=False, indent=2)
+    else:
+        history_rows = await DB.list_messages(conversation_id)
+        history_messages = [
+            ChatMessage(role=row["role"], content=row["text"]) for row in history_rows
+        ]
+        data = await _forward_to_llm(
+            CHAT_BASE_URL,
+            "/v1/chat/completions",
+            CHAT_TIMEOUT_S,
+            CHAT_API_KEY,
+            ChatCompletionRequest(
+                model=payload.model,
+                messages=history_messages,
+            ).model_dump(),
+        )
+        data = _sanitize_llm_response(data)
+        choice = (data.get("choices") or [{}])[0]
+        message = choice.get("message") if isinstance(choice, dict) else {}
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            raise HTTPException(status_code=502, detail="Odpověď je prázdná.")
+        reply = content.strip()
     assistant_embedding = await _create_embedding(reply)
     assistant_row = await DB.create_message(
         conversation_id,
