@@ -530,6 +530,75 @@ class Database:
     async def delete_topic(self, topic_id: int) -> str:
         return await self.execute("delete from topics where topic=$1", topic_id)
 
+    async def upsert_function_with_questions(
+        self,
+        name: str,
+        description: str,
+        active: bool,
+        type_value: str,
+        script: str,
+        questions: list[tuple[str, str]],
+    ) -> asyncpg.Record:
+        if self._pool is None:
+            raise RuntimeError("Database pool is not initialized.")
+        async with self._pool.acquire() as connection:
+            async with connection.transaction():
+                existing = await connection.fetchrow(
+                    """
+                    select function, active
+                      from functions
+                     where type=$1 and script=$2
+                    """,
+                    type_value,
+                    script,
+                )
+                if existing is None:
+                    row = await connection.fetchrow(
+                        """
+                        insert into functions (name, description, active, type, script)
+                        values ($1, $2, $3, $4, $5)
+                        returning function, name, description, active, type, script
+                        """,
+                        name,
+                        description,
+                        active,
+                        type_value,
+                        script,
+                    )
+                else:
+                    row = await connection.fetchrow(
+                        """
+                        update functions
+                           set name=$1, description=$2, active=$3, type=$4, script=$5
+                         where function=$6
+                         returning function, name, description, active, type, script
+                        """,
+                        name,
+                        description,
+                        existing["active"],
+                        type_value,
+                        script,
+                        existing["function"],
+                    )
+                if row is None:
+                    raise RuntimeError("Failed to upsert function.")
+                function_id = row["function"]
+                await connection.execute(
+                    "delete from functions_questions where function=$1",
+                    function_id,
+                )
+                for question, embedding_value in questions:
+                    await connection.execute(
+                        """
+                        insert into functions_questions ("function", text, embedding)
+                        values ($1, $2, $3::vector)
+                        """,
+                        function_id,
+                        question,
+                        embedding_value,
+                    )
+                return row
+
     async def list_function_questions(self) -> list[asyncpg.Record]:
         return await self.fetch(
             """

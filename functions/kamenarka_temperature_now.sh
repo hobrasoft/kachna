@@ -14,7 +14,7 @@ describe() {
     "Jaká je poslední teplota na Kamenárce?",
     "Je v tento moment na Kamenárce zima?",
     "Je v tento moment na Kamenárce horko?",
-    "Jaký je v tento moment tlak na Kamenárce?"
+    "Jaký je v tento moment tlak na Kamenárce?",
     "Jaký je nyní tlak na Kamenárce?"
   ],
   "params": {}
@@ -31,7 +31,7 @@ select
     t.pressure
 from telemetry_view t
 where t.temperature is not null
-  and t.station = 'www.kamenarka.cz'
+  and t.station = 'hobrasoft.cz sensor'
 order by t.date desc
 limit 1;
 SQL

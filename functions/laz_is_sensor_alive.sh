@@ -4,18 +4,18 @@ set -euo pipefail
 DB_HOST="hrabos"
 DB_NAME="kamenarka.eu"
 DB_USER="kamenarka.eu"
-STATION="www.kamenarka.cz"
+STATION="hobrasoft.cz sensor 2"
 
 describe() {
   cat <<'JSON'
 {
-  "name": "Stav senzoru Kamenárka",
-  "description": "Zjistí, zda je senzor na Kamenárce aktuálně online podle posledního měření",
+  "name": "Stav senzoru Láz",
+  "description": "Zjistí, zda je senzor na Lázu aktuálně online podle posledního měření",
   "questions": [
-    "Funguje senzor na Kamenárce?",
-    "Je Kamenárka online?",
-    "Je senzor na Kamenárce naživu?",
-    "Kdy se senzor na Kamenárce naposledy ozval?"
+    "Funguje senzor na Lázu?",
+    "Je Láz online?",
+    "Je senzor na Lázu naživu?",
+    "Kdy se senzor na Lázu naposledy ozval?"
   ],
   "params": {}
 }
@@ -48,7 +48,7 @@ SQL
   "alive": $alive,
   "last_seen": "$date",
   "age": "$age",
-  "station": "Kamenárka"
+  "station": "Láz"
 }
 JSON
 }
