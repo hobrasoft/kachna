@@ -1195,6 +1195,21 @@ function TopicCategoriesSection({ apiUrl }) {
   const [editingId, setEditingId] = useState(null);
   const [view, setView] = useState("list");
   const [error, setError] = useState("");
+  const [policies, setPolicies] = useState([]);
+
+  const formatPolicies = (items) => {
+    if (!items || items.length === 0) {
+      return "—";
+    }
+    return items
+      .map(
+        (policy) =>
+          `${policy.role_name} (${policy.role_abbr}): ${policy.policy_name}${
+            policy.policy ? ` – ${policy.policy}` : ""
+          }`,
+      )
+      .join(", ");
+  };
 
   const load = async () => {
     setError("");
@@ -1213,6 +1228,7 @@ function TopicCategoriesSection({ apiUrl }) {
   const startCreate = () => {
     setForm({ name: "", description: "" });
     setEditingId(null);
+    setPolicies([]);
     setError("");
     setView("form");
   };
@@ -1223,6 +1239,7 @@ function TopicCategoriesSection({ apiUrl }) {
       description: item.description,
     });
     setEditingId(item.topic_category);
+    setPolicies(item.policies ?? []);
     setError("");
     setView("form");
   };
@@ -1230,6 +1247,7 @@ function TopicCategoriesSection({ apiUrl }) {
   const handleCancel = () => {
     setForm({ name: "", description: "" });
     setEditingId(null);
+    setPolicies([]);
     setError("");
     setView("list");
   };
@@ -1286,12 +1304,14 @@ function TopicCategoriesSection({ apiUrl }) {
             <div className="table__row table__head">
               <span>Název</span>
               <span>Popis</span>
+              <span>Politiky</span>
               <span>Akce</span>
             </div>
             {items.map((item) => (
               <div className="table__row" key={item.topic_category}>
                 <span>{item.name}</span>
                 <span>{item.description}</span>
+                <span>{formatPolicies(item.policies)}</span>
                 <div className="table__actions">
                   <button type="button" onClick={() => startEdit(item)}>
                     Upravit
@@ -1307,6 +1327,9 @@ function TopicCategoriesSection({ apiUrl }) {
             {editingId && (
               <div className="form__info">Kód kategorie: {editingId}</div>
             )}
+            <div className="form__info">
+              Politiky: {formatPolicies(policies)}
+            </div>
             <label>
               Název
               <input

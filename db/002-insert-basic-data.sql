@@ -30,5 +30,11 @@ insert into user_has_role ("user", user_role) values (
     currval('user_roles_user_role_seq')
     );
 
+insert into topic_policies (name, policy) values
+('Ignorovat',   'ignore'),
+('Varovat',     'warn'),
+('Zakázat',     'restrict'),
+('Logovat',     'log');
+
 
 commit;

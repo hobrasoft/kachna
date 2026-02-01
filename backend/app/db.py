@@ -368,9 +368,33 @@ class Database:
     async def list_topic_categories(self) -> list[asyncpg.Record]:
         return await self.fetch(
             """
-            select topic_category, name, description
+            select
+                topic_categories.topic_category,
+                topic_categories.name,
+                topic_categories.description,
+                coalesce(
+                    jsonb_agg(
+                        json_build_object(
+                            'user_role', user_roles.user_role,
+                            'role_abbr', user_roles.abbr,
+                            'role_name', user_roles.name,
+                            'topic_policy', topic_policies.topic_policy,
+                            'policy_name', topic_policies.name,
+                            'policy', topic_policies.policy
+                        )
+                        order by user_roles.name
+                    ) filter (where topic_policies.topic_policy is not null),
+                    '[]'::jsonb
+                ) as policies
               from topic_categories
-             order by name
+         left join topic_categories_has_policies
+                on topic_categories_has_policies.topic_category = topic_categories.topic_category
+         left join user_roles
+                on user_roles.user_role = topic_categories_has_policies.user_role
+         left join topic_policies
+                on topic_policies.topic_policy = topic_categories_has_policies.topic_policy
+          group by topic_categories.topic_category
+          order by topic_categories.name
             """,
         )
 
@@ -392,9 +416,33 @@ class Database:
     async def get_topic_category(self, topic_category: int) -> asyncpg.Record | None:
         return await self.fetchrow(
             """
-            select topic_category, name, description
+            select
+                topic_categories.topic_category,
+                topic_categories.name,
+                topic_categories.description,
+                coalesce(
+                    jsonb_agg(
+                        json_build_object(
+                            'user_role', user_roles.user_role,
+                            'role_abbr', user_roles.abbr,
+                            'role_name', user_roles.name,
+                            'topic_policy', topic_policies.topic_policy,
+                            'policy_name', topic_policies.name,
+                            'policy', topic_policies.policy
+                        )
+                        order by user_roles.name
+                    ) filter (where topic_policies.topic_policy is not null),
+                    '[]'::jsonb
+                ) as policies
               from topic_categories
-             where topic_category=$1
+         left join topic_categories_has_policies
+                on topic_categories_has_policies.topic_category = topic_categories.topic_category
+         left join user_roles
+                on user_roles.user_role = topic_categories_has_policies.user_role
+         left join topic_policies
+                on topic_policies.topic_policy = topic_categories_has_policies.topic_policy
+             where topic_categories.topic_category=$1
+          group by topic_categories.topic_category
             """,
             topic_category,
         )

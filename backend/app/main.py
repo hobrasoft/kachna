@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import datetime
 from typing import Any, List, Optional
@@ -259,8 +260,18 @@ class TopicCategoryUpdate(BaseModel):
     description: Optional[str] = None
 
 
+class TopicCategoryPolicy(BaseModel):
+    user_role: int
+    role_abbr: str
+    role_name: str
+    topic_policy: int
+    policy_name: str
+    policy: Optional[str] = None
+
+
 class TopicCategoryResponse(TopicCategoryBase):
     topic_category: int
+    policies: List[TopicCategoryPolicy] = Field(default_factory=list)
 
 
 class TopicBase(BaseModel):
@@ -362,6 +373,28 @@ def _parse_vector(value: Any) -> List[float]:
             return []
         return [float(item) for item in stripped.split(",")]
     return []
+
+
+def _parse_policies(value: Any) -> List["TopicCategoryPolicy"]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(value, list):
+        return []
+    policies: List[TopicCategoryPolicy] = []
+    for item in value:
+        if isinstance(item, str):
+            try:
+                item = json.loads(item)
+            except json.JSONDecodeError:
+                continue
+        if isinstance(item, dict):
+            policies.append(TopicCategoryPolicy(**item))
+    return policies
 
 
 def _ensure_row(row: Any, message: str) -> Any:
@@ -938,6 +971,7 @@ async def list_topic_categories() -> List[TopicCategoryResponse]:
             topic_category=row["topic_category"],
             name=row["name"],
             description=row["description"],
+            policies=_parse_policies(row["policies"]),
         )
         for row in rows
     ]
@@ -950,10 +984,13 @@ async def create_topic_category(payload: TopicCategoryBase) -> TopicCategoryResp
         payload.description,
     )
     row = _ensure_row(row, "Kategorie tématu nebyla vytvořena.")
+    row = await DB.get_topic_category(row["topic_category"])
+    row = _ensure_row(row, "Kategorie tématu nebyla načtena.")
     return TopicCategoryResponse(
         topic_category=row["topic_category"],
         name=row["name"],
         description=row["description"],
+        policies=_parse_policies(row["policies"]),
     )
 
 
@@ -965,6 +1002,7 @@ async def get_topic_category(topic_category: int) -> TopicCategoryResponse:
         topic_category=row["topic_category"],
         name=row["name"],
         description=row["description"],
+        policies=_parse_policies(row["policies"]),
     )
 
 
@@ -979,10 +1017,13 @@ async def update_topic_category(
     description = payload.description if payload.description is not None else current["description"]
     row = await DB.update_topic_category(topic_category, name, description)
     row = _ensure_row(row, "Kategorie tématu nebyla upravena.")
+    row = await DB.get_topic_category(topic_category)
+    row = _ensure_row(row, "Kategorie tématu nebyla načtena.")
     return TopicCategoryResponse(
         topic_category=row["topic_category"],
         name=row["name"],
         description=row["description"],
+        policies=_parse_policies(row["policies"]),
     )
 
 
