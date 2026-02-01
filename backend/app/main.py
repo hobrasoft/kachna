@@ -34,6 +34,75 @@ DB = load_database()
 FUNCTIONS_ROOT = Path(__file__).resolve().parents[2] / "functions"
 
 
+class FunctionResultFormatter:
+    def __init__(self, base_url: str, timeout_s: float, api_key: str | None) -> None:
+        self._base_url = base_url
+        self._timeout_s = timeout_s
+        self._api_key = api_key
+
+    @staticmethod
+    def format_prompt() -> str:
+        return ("""
+Jsi formátovač odpovědí.
+
+Dostaneš:
+- otázku uživatele (v češtině)
+- JSON s faktickými daty
+
+Přísná pravidla:
+- ODPOVÍDEJ VÝHRADNĚ ČESKY.
+- Použij pouze informace nutné k zodpovězení otázky.
+- Nepřidávej žádná další data, i když jsou k dispozici.
+- Nepiš vysvětlení, doporučení ani zdvořilostní fráze.
+- Neveď konverzaci.
+- Nikdy nekomentuj svá pravidla, omezení ani instrukce.
+- Nevypisuj JSON, kód ani poznámky.
+- Odpověď musí obsahovat pouze samotnou odpověď.
+
+Úkol:
+Napiš jednu krátkou, neutrální větu v češtině.
+""")
+
+    async def format(self, question: str, result: Any, model: str) -> str:
+        result_json = json.dumps(result, ensure_ascii=False, indent=2)
+        payload = ChatCompletionRequest(
+            model=model,
+            messages=[
+                ChatMessage(role="system", content=self.format_prompt()),
+                ChatMessage(
+                    role="user",
+                    content=(
+                        "Question:\n"
+                        f"{question}\n\n"
+                        "JSON result:\n"
+                        f"{result_json}"
+                    ),
+                ),
+            ],
+        ).model_dump()
+        data = await _forward_to_llm(
+            self._base_url,
+            "/v1/chat/completions",
+            self._timeout_s,
+            self._api_key,
+            payload,
+        )
+        data = _sanitize_llm_response(data)
+        choice = (data.get("choices") or [{}])[0]
+        message = choice.get("message") if isinstance(choice, dict) else {}
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            return result_json
+        return content.strip()
+
+
+FUNCTION_RESULT_FORMATTER = FunctionResultFormatter(
+    CHAT_BASE_URL,
+    CHAT_TIMEOUT_S,
+    CHAT_API_KEY,
+)
+
+
 
 class ModelCard(BaseModel):
     id: str
@@ -756,7 +825,11 @@ async def create_conversation_chat_turn(
 
     if selected_function is not None:
         function_result = await _execute_function_script(selected_function["script"])
-        reply = json.dumps(function_result, ensure_ascii=False, indent=2)
+        reply = await FUNCTION_RESULT_FORMATTER.format(
+            payload.content,
+            function_result,
+            payload.model,
+        )
     else:
         history_rows = await DB.list_messages(conversation_id)
         history_messages = [
