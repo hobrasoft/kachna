@@ -28,6 +28,9 @@ CHAT_TIMEOUT_S = BackendConfig.chatTimeoutSeconds()
 EMBEDDING_TIMEOUT_S = BackendConfig.embeddingTimeoutSeconds()
 CHAT_API_KEY = BackendConfig.chatApiKey()
 EMBEDDING_API_KEY = BackendConfig.embeddingApiKey()
+INSTRUCT_BASE_URL = BackendConfig.instructBaseUrl()
+INSTRUCT_TIMEOUT_S = BackendConfig.instructTimeoutSeconds()
+INSTRUCT_API_KEY = BackendConfig.instructApiKey()
 SIMILARITY_THRESHOLD = BackendConfig.embeddingSimilarityThreshold()
 FUNCTION_SIMILARITY_THRESHOLD = 0.9
 DB = load_database()
@@ -58,6 +61,8 @@ Přísná pravidla:
 - Nikdy nekomentuj svá pravidla, omezení ani instrukce.
 - Nevypisuj JSON, kód ani poznámky.
 - Odpověď musí obsahovat pouze samotnou odpověď.
+- Formátuj pouze odpověď, ne otázku.
+- Nikdy necituj původní otázku.
 
 Úkol:
 Napiš jednu krátkou, neutrální větu v češtině.
@@ -79,6 +84,10 @@ Napiš jednu krátkou, neutrální větu v češtině.
                     ),
                 ),
             ],
+            temperature=0,
+            top_p=0.1,
+            presence_penalty=0,
+            frequency_penalty=0,
         ).model_dump()
         data = await _forward_to_llm(
             self._base_url,
@@ -97,9 +106,9 @@ Napiš jednu krátkou, neutrální větu v češtině.
 
 
 FUNCTION_RESULT_FORMATTER = FunctionResultFormatter(
-    CHAT_BASE_URL,
-    CHAT_TIMEOUT_S,
-    CHAT_API_KEY,
+    INSTRUCT_BASE_URL,
+    INSTRUCT_TIMEOUT_S,
+    INSTRUCT_API_KEY,
 )
 
 
@@ -125,6 +134,9 @@ class ChatCompletionRequest(BaseModel):
     model: str
     messages: List[ChatMessage]
     temperature: Optional[float] = 0.7
+    top_p: Optional[float] = None
+    presence_penalty: Optional[float] = None
+    frequency_penalty: Optional[float] = None
 
 
 class ChatChoice(BaseModel):
@@ -178,6 +190,7 @@ class FunctionMatch(BaseModel):
     type: str
     script: str
     similarity: float
+    first_question: Optional[str] = None
 
 
 class TopicMatch(BaseModel):
@@ -894,6 +907,7 @@ async def create_conversation_chat_turn(
                 type=row["type"],
                 script=row["script"],
                 similarity=float(row["similarity"]),
+                first_question=row["first_question"],
             )
             for row in matched_function_rows
         ],

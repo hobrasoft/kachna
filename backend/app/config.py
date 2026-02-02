@@ -130,3 +130,30 @@ class BackendConfig:
     def embeddingSimilarityThreshold(cls) -> float:
         parser = cls._ensure_loaded()
         return parser.getfloat("embedding", "similarity-threshold", fallback=0.6)
+
+    @classmethod
+    def instructHostname(cls) -> str:
+        parser = cls._ensure_loaded()
+        return parser.get("instruct", "hostname", fallback=cls.chatHostname())
+
+    @classmethod
+    def instructPort(cls) -> int:
+        parser = cls._ensure_loaded()
+        return parser.getint("instruct", "port", fallback=cls.chatPort())
+
+    @classmethod
+    def instructBaseUrl(cls) -> str:
+        hostname = cls.instructHostname()
+        port = cls.instructPort()
+        return f"http://{hostname}:{port}"
+
+    @classmethod
+    def instructTimeoutSeconds(cls) -> float:
+        parser = cls._ensure_loaded()
+        return parser.getfloat("instruct", "timeout", fallback=cls.chatTimeoutSeconds())
+
+    @classmethod
+    def instructApiKey(cls) -> str | None:
+        parser = cls._ensure_loaded()
+        value = parser.get("instruct", "api-key", fallback="").strip()
+        return value or cls.chatApiKey()

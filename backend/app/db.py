@@ -675,6 +675,13 @@ class Database:
                    f.active,
                    f.type,
                    f.script,
+                   (
+                       select fq_first.text
+                         from functions_questions fq_first
+                        where fq_first."function" = fq."function"
+                        order by fq_first.function_question
+                        limit 1
+                   ) as first_question,
                    1 - (fq.embedding <=> $1::vector) as similarity
               from functions_questions fq
               join functions f on f."function" = fq."function"

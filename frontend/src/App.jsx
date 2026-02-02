@@ -322,14 +322,12 @@ function ChatPanel({ apiUrl, user }) {
     }
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    const trimmed = input.trim();
-    if (!trimmed || isLoading || !activeConversationId) {
+  const sendMessage = async (question) => {
+    if (!question || isLoading || !activeConversationId) {
       return;
     }
 
-    const nextMessages = [...messages, { role: "user", content: trimmed }];
+    const nextMessages = [...messages, { role: "user", content: question }];
     setMessages(nextMessages);
     setInput("");
     setError("");
@@ -342,7 +340,7 @@ function ChatPanel({ apiUrl, user }) {
         {
           user: user.user,
           model,
-          content: trimmed,
+          content: question,
         },
       );
 
@@ -394,6 +392,22 @@ function ChatPanel({ apiUrl, user }) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    const trimmed = input.trim();
+    if (!trimmed || isLoading || !activeConversationId) {
+      return;
+    }
+    await sendMessage(trimmed);
+  };
+
+  const handleFunctionQuestionClick = async (match) => {
+    if (!match?.first_question) {
+      return;
+    }
+    await sendMessage(match.first_question);
   };
 
   const visibleMessages = messages.filter((message) => message.role !== "system");
@@ -529,12 +543,25 @@ function ChatPanel({ apiUrl, user }) {
                         <div className="chat__match-group">
                           <div className="chat__match-label">Funkce</div>
                           <ul className="chat__match-list">
-                            {message.matches.functions.map((match) => (
+                            {message.matches.functions.map((match, matchIndex) => (
                               <li
                                 key={`function-${match.function}`}
                                 className="chat__match-item"
                               >
-                                <span>{match.name}</span>
+                                {matchIndex === 0 || !match.first_question ? (
+                                  <span>{match.name}</span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="chat__match-button"
+                                    onClick={() =>
+                                      handleFunctionQuestionClick(match)
+                                    }
+                                    disabled={isLoading}
+                                  >
+                                    {match.name}
+                                  </button>
+                                )}
                                 <span className="chat__match-score">
                                   {formatSimilarity(match.similarity)}
                                 </span>

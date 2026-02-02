@@ -380,6 +380,27 @@ textarea {
   gap: 12px;
 }
 
+.chat__match-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #e2e8f0;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  font: inherit;
+}
+
+.chat__match-button:hover {
+  color: #7dd3fc;
+}
+
+.chat__match-button:disabled {
+  cursor: not-allowed;
+  color: #94a3b8;
+  text-decoration: none;
+}
+
 .chat__match-score {
   color: #7dd3fc;
   font-variant-numeric: tabular-nums;
