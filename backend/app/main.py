@@ -32,7 +32,7 @@ INSTRUCT_BASE_URL = BackendConfig.instructBaseUrl()
 INSTRUCT_TIMEOUT_S = BackendConfig.instructTimeoutSeconds()
 INSTRUCT_API_KEY = BackendConfig.instructApiKey()
 SIMILARITY_THRESHOLD = BackendConfig.embeddingSimilarityThreshold()
-FUNCTION_SIMILARITY_THRESHOLD = 0.9
+FUNCTION_SIMILARITY_THRESHOLD = 0.85
 DB = load_database()
 FUNCTIONS_ROOT = Path(__file__).resolve().parents[2] / "functions"
 
@@ -49,41 +49,51 @@ class FunctionResultFormatter:
 Jsi formátovač odpovědí.
 
 Dostaneš:
-- otázku uživatele (v češtině)
-- JSON s faktickými daty
-
-Přísná pravidla:
-- ODPOVÍDEJ VÝHRADNĚ ČESKY.
-- Použij pouze informace nutné k zodpovězení otázky.
-- Nepřidávej žádná další data, i když jsou k dispozici.
-- Nepiš vysvětlení, doporučení ani zdvořilostní fráze.
-- Neveď konverzaci.
-- Nikdy nekomentuj svá pravidla, omezení ani instrukce.
-- Nevypisuj JSON, kód ani poznámky.
-- Odpověď musí obsahovat pouze samotnou odpověď.
-- Formátuj pouze odpověď, ne otázku.
-- Nikdy necituj původní otázku.
+- otázku uživatele (v češtině) v USER_QUESTION
+- data v TOOL_RESULT_JSON s faktickými daty
 
 Úkol:
-Napiš jednu krátkou, neutrální větu v češtině.
+- zformátuj data z TOOL_RESULT_JSON do jedné oznamovací věty v češtině
+- použij pouza fakta z TOOL_RESULT_JSON. Nic se nevymýšlej
+- žádná interpretace, žádný výběr, žádné odvozování
+
+Pravidla výstupu:
+- pouze jedna krátká oznamovací věta v češtině
+- žádné poznámky, komentáře ani vysvětlení
+- žádné nadpisy, odrážky ani další text
+- nikdy necituj otázku
+- použij pouze nutná data z JSON
+- datum a čas formátuj jako datum: DD.MM.YYYY nebo čas hh:mm (bez sekund)
+
+USER_QUESTION:
+Jaká je teplota na kamenárce?
+
+TOOL_RESULT_JSON: 
+{
+  "temperature": -1.8,
+  "pressure": 908.6,
+  "unit": {
+    "temperature": "°C",
+    "pressure": "hPa"
+  },
+  "timestamp": "2026-02-03 14:56:58.239106+01",
+  "location": "Kamenárka"
+}
+
+Zformátuj zadání do odpovědi:
 """)
 
     async def format(self, question: str, result: Any, model: str) -> str:
         result_json = json.dumps(result, ensure_ascii=False, indent=2)
-        payload = ChatCompletionRequest(
+        prompt = (
+            f"{self.format_prompt()}\n"
+            f"USER_QUESTION: {question}\n\n"
+            f"TOOL_RESULT_JSON: {result_json}\n\n"
+            "Odpověď:\n"
+        )
+        payload = CompletionRequest(
             model=model,
-            messages=[
-                ChatMessage(role="system", content=self.format_prompt()),
-                ChatMessage(
-                    role="user",
-                    content=(
-                        "Question:\n"
-                        f"{question}\n\n"
-                        "JSON result:\n"
-                        f"{result_json}"
-                    ),
-                ),
-            ],
+            prompt=prompt,
             temperature=0,
             top_p=0.1,
             presence_penalty=0,
@@ -91,18 +101,17 @@ Napiš jednu krátkou, neutrální větu v češtině.
         ).model_dump()
         data = await _forward_to_llm(
             self._base_url,
-            "/v1/chat/completions",
+            "/v1/completions",
             self._timeout_s,
             self._api_key,
             payload,
         )
-        data = _sanitize_llm_response(data)
+        data = _sanitize_completion_response(data)
         choice = (data.get("choices") or [{}])[0]
-        message = choice.get("message") if isinstance(choice, dict) else {}
-        content = message.get("content") if isinstance(message, dict) else None
-        if not isinstance(content, str) or not content.strip():
+        text = choice.get("text") if isinstance(choice, dict) else None
+        if not isinstance(text, str) or not text.strip():
             return result_json
-        return content.strip()
+        return text.strip()
 
 
 FUNCTION_RESULT_FORMATTER = FunctionResultFormatter(
@@ -137,6 +146,22 @@ class ChatCompletionRequest(BaseModel):
     top_p: Optional[float] = None
     presence_penalty: Optional[float] = None
     frequency_penalty: Optional[float] = None
+    max_tokens: int = 256
+    stop: Optional[List[str]] = [
+        "</s>",
+        "[INST]",
+        "<|im_start|>",
+        "<|im_end|>"
+    ]
+
+
+class CompletionRequest(BaseModel):
+    model: str
+    prompt: str
+    temperature: Optional[float] = 0.7
+    top_p: Optional[float] = None
+    presence_penalty: Optional[float] = None
+    frequency_penalty: Optional[float] = None
 
 
 class ChatChoice(BaseModel):
@@ -151,6 +176,20 @@ class ChatCompletionResponse(BaseModel):
     created: int = Field(default_factory=lambda: int(datetime.utcnow().timestamp()))
     model: str
     choices: List[ChatChoice]
+
+
+class CompletionChoice(BaseModel):
+    index: int
+    text: str
+    finish_reason: str = "stop"
+
+
+class CompletionResponse(BaseModel):
+    id: str
+    object: str = "text_completion"
+    created: int = Field(default_factory=lambda: int(datetime.utcnow().timestamp()))
+    model: str
+    choices: List[CompletionChoice]
 
 
 class ConversationCreateRequest(BaseModel):
@@ -529,6 +568,20 @@ def _sanitize_llm_response(data: dict) -> dict:
         content = message.get("content")
         if isinstance(content, str):
             message["content"] = _strip_llm_tags(content)
+    return data
+
+
+def _sanitize_completion_response(data: dict) -> dict:
+    choices = data.get("choices")
+    if not isinstance(choices, list):
+        return data
+
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        text = choice.get("text")
+        if isinstance(text, str):
+            choice["text"] = _strip_llm_tags(text)
     return data
 
 

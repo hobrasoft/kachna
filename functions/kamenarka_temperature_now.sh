@@ -15,7 +15,10 @@ describe() {
     "Je v tento moment na Kamenárce zima?",
     "Je v tento moment na Kamenárce horko?",
     "Jaký je v tento moment tlak na Kamenárce?",
-    "Jaký je nyní tlak na Kamenárce?"
+    "Jaký je nyní tlak na Kamenárce?",
+    "Kolik je stupňů na Kamenárce?",
+    "Kolik je nyní stupňů na Kamenárce?",
+    "Kolik je teď stupňů na Kamenárce?"
   ],
   "params": {}
 }
@@ -27,8 +30,8 @@ execute() {
     psql -h "$DB_HOST" -U "$DB_USER" "$DB_NAME" -At -F $'\t' <<'SQL'
 select
     t.date,
-    t.temperature,
-    t.pressure
+    round(t.temperature*10)/10 as temperature,
+    round(t.pressure*10)/10 as pressure
 from telemetry_view t
 where t.temperature is not null
   and t.station = 'hobrasoft.cz sensor'
