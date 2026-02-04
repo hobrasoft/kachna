@@ -336,9 +336,32 @@ textarea {
   background: #1e293b;
 }
 
-.chat__message p {
+.chat__message-text {
   margin: 0;
   white-space: pre-wrap;
+}
+
+.chat__message-content {
+  width: 100%;
+}
+
+.chat__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.chat__table th,
+.chat__table td {
+  border: 1px solid #1f2937;
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.chat__table th {
+  background: #0b1220;
+  color: #e2e8f0;
 }
 
 .chat__matches {

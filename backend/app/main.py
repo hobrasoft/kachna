@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from .config import BackendConfig
 from .db import load_database
+from .function_result_formatter import FunctionResultFormatter
 
 app = FastAPI(title="kachna-api", version="0.1.0")
 app.add_middleware(
@@ -35,102 +36,6 @@ SIMILARITY_THRESHOLD = BackendConfig.embeddingSimilarityThreshold()
 FUNCTION_SIMILARITY_THRESHOLD = 0.85
 DB = load_database()
 FUNCTIONS_ROOT = Path(__file__).resolve().parents[2] / "functions"
-
-
-class FunctionResultFormatter:
-    def __init__(self, base_url: str, timeout_s: float, api_key: str | None) -> None:
-        self._base_url = base_url
-        self._timeout_s = timeout_s
-        self._api_key = api_key
-
-    @staticmethod
-    def format_prompt() -> str:
-        return ("""
-
-Jsi formátovač odpovědí.
-
-Dostaneš:
-- otázku uživatele (v češtině) v USER_QUESTION
-- data v TOOL_RESULT_JSON s faktickými daty
-
-Úkol:
-- zformátuj data z TOOL_RESULT_JSON do jedné oznamovací věty v češtině
-- použij pouza fakta z TOOL_RESULT_JSON. Nic se nevymýšlej
-- žádná interpretace, žádný výběr, žádné odvozování
-
-Pravidla výstupu:
-- pouze jedna krátká oznamovací věta v češtině
-- žádné poznámky, komentáře ani vysvětlení
-- žádné nadpisy, odrážky ani další text
-- nikdy necituj otázku
-- použij pouze nutná data z JSON
-- datum a čas formátuj jako datum: DD.MM.YYYY nebo čas hh:mm (bez sekund)
-{PROMPT_RECOMMENDATION}
-
-USER_QUESTION:
-{USER_QUESTION}
-
-TOOL_RESULT_JSON:
-{TOOL_RESULT_JSON}
-
-Zformátuj zadání do odpovědi:
-
-""")
-
-    async def format(self, question: str, result: Any, model: str) -> str:
-        result_json = json.dumps(result, ensure_ascii=False, indent=2)
-
-        # vytáhni format z JSONu
-        format = ""
-        if isinstance(result, dict) and "format" in result:
-            format = result["format"].strip()
-
-        # vytáhni doporučení z JSONu
-        recommendation = ""
-        if isinstance(result, dict) and "prompt" in result:
-            recommendation = result["prompt"].strip()
-
-        # pokud existuje, zabal ho jako blok instrukcí
-        prompt_recommendation = ""
-        if recommendation:
-            prompt_recommendation = f"- {recommendation}\n"
-
-        # slož finální prompt
-        prompt = self.format_prompt().format(
-            PROMPT_RECOMMENDATION=prompt_recommendation,
-            USER_QUESTION=question,
-            TOOL_RESULT_JSON=result_json,
-        )
-
-
-        payload = CompletionRequest(
-            model=model,
-            prompt=prompt,
-            temperature=0,
-            top_p=0.1,
-            presence_penalty=0,
-            frequency_penalty=0,
-        ).model_dump()
-        data = await _forward_to_llm(
-            self._base_url,
-            "/v1/completions",
-            self._timeout_s,
-            self._api_key,
-            payload,
-        )
-        data = _sanitize_completion_response(data)
-        choice = (data.get("choices") or [{}])[0]
-        text = choice.get("text") if isinstance(choice, dict) else None
-        if not isinstance(text, str) or not text.strip():
-            return result_json
-        return text.strip()
-
-
-FUNCTION_RESULT_FORMATTER = FunctionResultFormatter(
-    INSTRUCT_BASE_URL,
-    INSTRUCT_TIMEOUT_S,
-    INSTRUCT_API_KEY,
-)
 
 
 
@@ -595,6 +500,16 @@ def _sanitize_completion_response(data: dict) -> dict:
         if isinstance(text, str):
             choice["text"] = _strip_llm_tags(text)
     return data
+
+
+FUNCTION_RESULT_FORMATTER = FunctionResultFormatter(
+    INSTRUCT_BASE_URL,
+    INSTRUCT_TIMEOUT_S,
+    INSTRUCT_API_KEY,
+    _forward_to_llm,
+    _sanitize_completion_response,
+    CompletionRequest,
+)
 
 
 _EMBEDDING_MODEL_ID: Optional[str] = None

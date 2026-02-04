@@ -15,6 +15,47 @@ const emptyUser = {
 
 const defaultChatModel = "local-model";
 
+const splitMarkdownRow = (line) =>
+  line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim().replace(/\\\|/g, "|"));
+
+const isDividerRow = (cells) =>
+  cells.length > 0 &&
+  cells.every((cell) => /^:?-+:?$/.test(cell.replace(/\s/g, "")));
+
+const parseMarkdownTable = (content) => {
+  if (typeof content !== "string") {
+    return null;
+  }
+  const lines = content
+    .trim()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 2) {
+    return null;
+  }
+  const headerCells = splitMarkdownRow(lines[0]);
+  const dividerCells = splitMarkdownRow(lines[1]);
+  if (headerCells.length === 0 || !isDividerRow(dividerCells)) {
+    return null;
+  }
+  const rows = lines.slice(2).map((line) => splitMarkdownRow(line));
+  return {
+    headers: headerCells,
+    rows: rows.map((row) => {
+      if (row.length >= headerCells.length) {
+        return row;
+      }
+      return [...row, ...Array(headerCells.length - row.length).fill("")];
+    }),
+  };
+};
+
 function SectionCard({ title, children }) {
   return (
     <section className="card">
@@ -411,6 +452,34 @@ function ChatPanel({ apiUrl, user }) {
   };
 
   const visibleMessages = messages.filter((message) => message.role !== "system");
+  const renderMessageContent = (content) => {
+    const table = parseMarkdownTable(content);
+    if (table) {
+      return (
+        <div className="chat__message-content">
+          <table className="chat__table">
+            <thead>
+              <tr>
+                {table.headers.map((header, headerIndex) => (
+                  <th key={`header-${headerIndex}`}>{header}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {table.rows.map((row, rowIndex) => (
+                <tr key={`row-${rowIndex}`}>
+                  {row.map((cell, cellIndex) => (
+                    <td key={`cell-${rowIndex}-${cellIndex}`}>{cell}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+    return <p className="chat__message-text">{content}</p>;
+  };
 
   return (
     <section className="chat-shell">
@@ -534,7 +603,7 @@ function ChatPanel({ apiUrl, user }) {
                   <div className="chat__role">
                     {message.role === "user" ? "Ty" : "Kachna"}
                   </div>
-                  <p>{message.content}</p>
+                  {renderMessageContent(message.content)}
                   {message.matches &&
                   (message.matches.functions?.length ||
                     message.matches.topics?.length) ? (
