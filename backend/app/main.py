@@ -33,6 +33,7 @@ INSTRUCT_BASE_URL = BackendConfig.instructBaseUrl()
 INSTRUCT_TIMEOUT_S = BackendConfig.instructTimeoutSeconds()
 INSTRUCT_API_KEY = BackendConfig.instructApiKey()
 SIMILARITY_THRESHOLD = BackendConfig.embeddingSimilarityThreshold()
+EMBEDDING_MAX_INPUT_CHARS = 1920
 FUNCTION_SIMILARITY_THRESHOLD = 0.85
 DB = load_database()
 FUNCTIONS_ROOT = Path(__file__).resolve().parents[2] / "functions"
@@ -355,6 +356,32 @@ def _vector_from_list(values: List[float]) -> str:
     return "[" + ",".join(str(value) for value in values) + "]"
 
 
+def _truncate_for_embedding(value: Any) -> Any:
+    if isinstance(value, str):
+        return value[:EMBEDDING_MAX_INPUT_CHARS]
+    if isinstance(value, list):
+        return [
+            item[:EMBEDDING_MAX_INPUT_CHARS] if isinstance(item, str) else item
+            for item in value
+        ]
+    return value
+
+
+def _extract_json_payload(output: str) -> str | None:
+    if not output:
+        return None
+    start_candidates = [idx for idx in (output.find("{"), output.find("[")) if idx != -1]
+    if not start_candidates:
+        return None
+    start = min(start_candidates)
+    end_object = output.rfind("}")
+    end_array = output.rfind("]")
+    end = max(end_object, end_array)
+    if end == -1 or end < start:
+        return None
+    return output[start : end + 1]
+
+
 async def _execute_function_script(script: str) -> Any:
     if not script.strip():
         raise HTTPException(status_code=502, detail="Funkce nemá definovaný skript.")
@@ -384,6 +411,12 @@ async def _execute_function_script(script: str) -> Any:
     try:
         return json.loads(output)
     except json.JSONDecodeError as exc:
+        extracted = _extract_json_payload(output)
+        if extracted is not None:
+            try:
+                return json.loads(extracted)
+            except json.JSONDecodeError:
+                pass
         raise HTTPException(
             status_code=502,
             detail=f"Funkce nevrátila JSON: {exc.msg}",
@@ -540,12 +573,14 @@ async def _get_embedding_model_id() -> str:
 async def _create_embedding(text: str) -> List[float]:
     model_id = await _get_embedding_model_id()
     payload = EmbeddingRequest(model=model_id, input=text).model_dump()
+    truncated_payload = payload
+    truncated_payload["input"] = _truncate_for_embedding(truncated_payload.get("input"))
     data = await _forward_to_llm(
         EMBEDDING_BASE_URL,
         "/v1/embeddings",
         EMBEDDING_TIMEOUT_S,
         EMBEDDING_API_KEY,
-        payload,
+        truncated_payload,
     )
     entries = data.get("data")
     if not isinstance(entries, list) or not entries:
@@ -1377,11 +1412,13 @@ async def create_chat_completion(payload: ChatCompletionRequest) -> ChatCompleti
 
 @app.post("/v1/embeddings")
 async def create_embeddings(payload: EmbeddingRequest) -> dict:
+    truncated_payload = payload.model_dump()
+    truncated_payload["input"] = _truncate_for_embedding(truncated_payload.get("input"))
     data = await _forward_to_llm(
         EMBEDDING_BASE_URL,
         "/v1/embeddings",
         EMBEDDING_TIMEOUT_S,
         EMBEDDING_API_KEY,
-        payload.model_dump(),
+        truncated_payload,
     )
     return data
