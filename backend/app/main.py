@@ -46,6 +46,7 @@ class FunctionResultFormatter:
     @staticmethod
     def format_prompt() -> str:
         return ("""
+
 Jsi formátovač odpovědí.
 
 Dostaneš:
@@ -64,33 +65,44 @@ Pravidla výstupu:
 - nikdy necituj otázku
 - použij pouze nutná data z JSON
 - datum a čas formátuj jako datum: DD.MM.YYYY nebo čas hh:mm (bez sekund)
+{PROMPT_RECOMMENDATION}
 
 USER_QUESTION:
-Jaká je teplota na kamenárce?
+{USER_QUESTION}
 
-TOOL_RESULT_JSON: 
-{
-  "temperature": -1.8,
-  "pressure": 908.6,
-  "unit": {
-    "temperature": "°C",
-    "pressure": "hPa"
-  },
-  "timestamp": "2026-02-03 14:56:58.239106+01",
-  "location": "Kamenárka"
-}
+TOOL_RESULT_JSON:
+{TOOL_RESULT_JSON}
 
 Zformátuj zadání do odpovědi:
+
 """)
 
     async def format(self, question: str, result: Any, model: str) -> str:
         result_json = json.dumps(result, ensure_ascii=False, indent=2)
-        prompt = (
-            f"{self.format_prompt()}\n"
-            f"USER_QUESTION: {question}\n\n"
-            f"TOOL_RESULT_JSON: {result_json}\n\n"
-            "Odpověď:\n"
+
+        # vytáhni format z JSONu
+        format = ""
+        if isinstance(result, dict) and "format" in result:
+            format = result["format"].strip()
+
+        # vytáhni doporučení z JSONu
+        recommendation = ""
+        if isinstance(result, dict) and "prompt" in result:
+            recommendation = result["prompt"].strip()
+
+        # pokud existuje, zabal ho jako blok instrukcí
+        prompt_recommendation = ""
+        if recommendation:
+            prompt_recommendation = f"- {recommendation}\n"
+
+        # slož finální prompt
+        prompt = self.format_prompt().format(
+            PROMPT_RECOMMENDATION=prompt_recommendation,
+            USER_QUESTION=question,
+            TOOL_RESULT_JSON=result_json,
         )
+
+
         payload = CompletionRequest(
             model=model,
             prompt=prompt,

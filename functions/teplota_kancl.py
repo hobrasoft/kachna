@@ -10,13 +10,12 @@ CONFIG_FILE = Path.home() / ".kachna.conf"
 
 def describe():
     print(json.dumps({
-        "name": "Teplota v Rožnově",
+        "name": "Teplota v kanceláři",
         "description": "Načte aktuální teploty ze senzorů v Home Assistant",
         "questions": [
-            "Kolik je venku stupňů?",
-            "Jaká je momentální aktuální venkovní teplota?",
-            "Kolik je v Rožnově stupňů?",
-            "Jaká je v Rožnově aktuální venkovní momentální teplota?"
+            "Kolik je v kanceláři stupňů?",
+            "Jaká je momentální aktuální teplota v kanceláři?",
+            "Jaká je v kanceláři aktuální momentální teplota?"
         ],
         "params": {}
     }, indent=2))
@@ -61,10 +60,10 @@ def get_state(entity_id: str, url: str, token: str):
 def execute():
     ha_url, ha_token = load_config()
 
-    venku = get_state("sensor.venkovni_teplota", ha_url, ha_token)
+    venku = get_state("sensor.kancelar_u_podlahy", ha_url, ha_token)
 
     print(json.dumps({
-        "venkovni_teplota": venku,
+        "teplota": venku,
         "unit": "°C",
         "source": "Home Assistant"
     }, indent=2))

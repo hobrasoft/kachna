@@ -68,6 +68,7 @@ def execute():
         "pressure": tlak_skutecny,
         "pressure_at_sea_level": tlak_prepocteny,
         "unit": "hPa",
+        "prompt": "Uváděj přednostně tlak přepočtený na hladinu moře v položce pressure_at_sea_level",
         "source": "Home Assistant",
         "location": "Rožnov pod Radhoštěm"
     }, indent=2))
