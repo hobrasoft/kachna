@@ -46,8 +46,17 @@ def _parse_description(output: str) -> dict[str, Any]:
 
 
 def _run_describe(script_path: Path) -> dict[str, Any]:
+    if not script_path.is_file():
+        raise FileNotFoundError(f"Skript '{script_path}' neexistuje.")
+    if not script_path.is_absolute():
+        script_path = script_path.resolve()
+    if not script_path.exists():
+        raise FileNotFoundError(f"Skript '{script_path}' neexistuje.")
+    if not script_path.stat().st_mode & 0o111:
+        raise PermissionError(f"Skript '{script_path}' není spustitelný.")
+
     result = subprocess.run(
-        ["bash", str(script_path), "--describe"],
+        [str(script_path), "--describe"],
         check=False,
         capture_output=True,
         text=True,
