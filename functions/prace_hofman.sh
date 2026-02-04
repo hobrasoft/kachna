@@ -8,12 +8,14 @@ DB_USER="tycho"
 describe() {
   cat <<'JSON'
 {
-  "name": "Práce Dioflex Bravenec",
-  "description": "Zjistí rozpracované úkoly Petr Bravence pro Dioflex",
+  "name": "Práce Hofman",
+  "description": "Zjistí rozpracované úkoly Tomáše Hofmana",
   "questions": [
-    "Co dělá Petr Bravenec pro Dioflex?",
-    "Jakou práci má Petr Bravenec rozdělanou pro Dioflex?",
-    "Jaký je pracovní výkaz Petr Bravenec pro Dioflex?"
+    "Na čem pracuje Tomáš Hofman?",
+    "Co dělá Tomáš Hofman?",
+    "Jakou práci má Tomáš Hofman rozdělanou?",
+    "Jaký je pracovní výkaz Tomáše Hofmana?",
+    "Co má právě rozpracováno Tomáš Hofman?"
   ],
   "params": {}
 }
@@ -25,8 +27,7 @@ execute() {
     psql -h "$DB_HOST" -U "$DB_USER" "$DB_NAME" -At <<'SQL'
         with params as (
             select
-                2 as "user", 
-                44 as category,
+                3 as "user", 
                 true as valid
         ),
         subdotaz as (
@@ -41,7 +42,6 @@ execute() {
                 left join categories c on (c.category = tsw.category)
                 where sts.can_be_run
                   and tsw."user" = p."user"
-                  and tsw.category = p.category
         ),
         dotaz as (
             select * from subdotaz
@@ -63,7 +63,6 @@ execute() {
                     ), '[]'::json)
             from dotaz
         ;
-
 SQL
   )"
 

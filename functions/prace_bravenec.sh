@@ -8,12 +8,14 @@ DB_USER="tycho"
 describe() {
   cat <<'JSON'
 {
-  "name": "Práce Dioflex Bravenec",
-  "description": "Zjistí rozpracované úkoly Petr Bravence pro Dioflex",
+  "name": "Práce Bravenec",
+  "description": "Zjistí rozpracované úkoly Petra Bravence",
   "questions": [
-    "Co dělá Petr Bravenec pro Dioflex?",
-    "Jakou práci má Petr Bravenec rozdělanou pro Dioflex?",
-    "Jaký je pracovní výkaz Petr Bravenec pro Dioflex?"
+    "Na čem pracuje Petr Bravenec?",
+    "Co dělá Petr Bravenec?",
+    "Jakou práci má Petr Bravenec rozdělanou?",
+    "Jaký je pracovní výkaz Petr Bravence?",
+    "Co má právě rozpracováno Petr Bravenec?"
   ],
   "params": {}
 }
@@ -26,7 +28,6 @@ execute() {
         with params as (
             select
                 2 as "user", 
-                44 as category,
                 true as valid
         ),
         subdotaz as (
@@ -41,7 +42,6 @@ execute() {
                 left join categories c on (c.category = tsw.category)
                 where sts.can_be_run
                   and tsw."user" = p."user"
-                  and tsw.category = p.category
         ),
         dotaz as (
             select * from subdotaz
@@ -63,7 +63,6 @@ execute() {
                     ), '[]'::json)
             from dotaz
         ;
-
 SQL
   )"
 
