@@ -548,9 +548,6 @@ function ChatPanel({ apiUrl, user }) {
                                 key={`function-${match.function}`}
                                 className="chat__match-item"
                               >
-                                {matchIndex === 0 || !match.first_question ? (
-                                  <span>{match.name}</span>
-                                ) : (
                                   <button
                                     type="button"
                                     className="chat__match-button"
@@ -561,7 +558,6 @@ function ChatPanel({ apiUrl, user }) {
                                   >
                                     {match.name}
                                   </button>
-                                )}
                                 <span className="chat__match-score">
                                   {formatSimilarity(match.similarity)}
                                 </span>
