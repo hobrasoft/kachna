@@ -6,7 +6,7 @@ f = Function()
 
 f.setName           ("Teplota Láz")
 f.setDescription    ("Teplota Láz")
-f.addQuestion       ("Jaká je poslední teplota na Láze?")
+f.addQuestion       ("Jaká je poslední teplota na Lázu?")
 f.addQuestion       ("Je v tento moment na Lázei zima?")
 f.addQuestion       ("Je v tento moment na Lázeh orko?")
 f.addQuestion       ("Jaký je v tento moment tlak na Lázu?")

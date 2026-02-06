@@ -62,10 +62,15 @@ Zformátuj zadání do odpovědi:
         if table_markdown is not None:
             return table_markdown
 
+        # vytáhni prompt z JSONu
+        prompt = self.format_prompt()
+        if isinstance(result, dict) and "prompt" in result and result['prompt'] != None:
+            prompt = result["prompt"].strip()
+
         # vytáhni doporučení z JSONu
         recommendation = ""
-        if isinstance(result, dict) and "prompt" in result:
-            recommendation = result["prompt"].strip()
+        if isinstance(result, dict) and "advice" in result and result["advice"] != None:
+            recommendation = result["advice"].strip()
 
         # pokud existuje, zabal ho jako blok instrukcí
         prompt_recommendation = ""
@@ -73,7 +78,7 @@ Zformátuj zadání do odpovědi:
             prompt_recommendation = f"- {recommendation}\n"
 
         # slož finální prompt
-        prompt = self.format_prompt().format(
+        prompt = prompt.format(
             PROMPT_RECOMMENDATION=prompt_recommendation,
             USER_QUESTION=question,
             TOOL_RESULT_JSON=result_json,
