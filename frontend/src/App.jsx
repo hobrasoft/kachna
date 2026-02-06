@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "./apiClient";
+import logoImage from "./assets/rag-llm-kachna-t.png";
 
 const API_URL =
   __KACHNA_API_URL__ ??
@@ -98,8 +99,8 @@ function LoginForm({ onLogin }) {
   return (
     <div className="login">
       <div className="login__panel">
+        <img className="login__logo" src={logoImage} alt="Kachna logo" />
         <h1>Kachna</h1>
-        <p>Přihlas se do chatu.</p>
         <form className="form" onSubmit={handleSubmit}>
           <label>
             Login

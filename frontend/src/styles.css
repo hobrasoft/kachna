@@ -291,6 +291,13 @@ textarea {
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
 }
 
+.login__logo {
+  display: block;
+  width: min(240px, 100%);
+  margin: 0 auto 20px;
+  height: auto;
+}
+
 .login__panel h1 {
   margin-top: 0;
 }
