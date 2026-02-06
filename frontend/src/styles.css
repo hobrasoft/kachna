@@ -375,6 +375,10 @@ textarea {
   color: #cbd5f5;
 }
 
+.chat__matches--confidence {
+  margin-top: 10px;
+}
+
 .chat__match-group {
   display: flex;
   flex-direction: column;

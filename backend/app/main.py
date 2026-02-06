@@ -169,6 +169,7 @@ class ChatTurnResponse(BaseModel):
     assistant_message: MessageResponse
     matched_functions: List[FunctionMatch] = Field(default_factory=list)
     matched_topics: List[TopicMatch] = Field(default_factory=list)
+    function_confidence: Optional[float] = None
 
 
 class EmbeddingRequest(BaseModel):
@@ -421,6 +422,20 @@ async def _execute_function_script(script: str) -> Any:
             status_code=502,
             detail=f"Funkce nevrátila JSON: {exc.msg}",
         ) from exc
+
+
+def _extract_function_confidence(result: Any) -> Optional[float]:
+    if not isinstance(result, dict):
+        return None
+    for key in ("confidence", "conficence"):
+        value = result.get(key)
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def _parse_vector(value: Any) -> List[float]:
@@ -853,12 +868,14 @@ async def create_conversation_chat_turn(
 
     if selected_function is not None:
         function_result = await _execute_function_script(selected_function["script"])
+        function_confidence = _extract_function_confidence(function_result)
         reply = await FUNCTION_RESULT_FORMATTER.format(
             payload.content,
             function_result,
             payload.model,
         )
     else:
+        function_confidence = None
         history_rows = await DB.list_messages(conversation_id)
         history_messages = [
             ChatMessage(role=row["role"], content=row["text"]) for row in history_rows
@@ -935,6 +952,7 @@ async def create_conversation_chat_turn(
             )
             for row in matched_topic_rows
         ],
+        function_confidence=function_confidence,
     )
 
 

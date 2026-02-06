@@ -417,11 +417,16 @@ function ChatPanel({ apiUrl, user }) {
           ),
         );
       }
+      const parsedConfidence = Number.parseFloat(data?.function_confidence);
+      const functionConfidence = Number.isFinite(parsedConfidence)
+        ? parsedConfidence
+        : null;
       setMessages([
         ...nextMessages,
         {
           role: "assistant",
           content: reply,
+          functionConfidence,
           matches: {
             functions: sortBySimilarity(matchedFunctions, (item) => item?.name),
             topics: sortBySimilarity(matchedTopics, (item) => item?.text),
@@ -604,6 +609,16 @@ function ChatPanel({ apiUrl, user }) {
                     {message.role === "user" ? "Ty" : "Kachna"}
                   </div>
                   {renderMessageContent(message.content)}
+                  {typeof message.functionConfidence === "number" ? (
+                    <div className="chat__matches chat__matches--confidence">
+                      <div className="chat__match-group">
+                        <div className="chat__match-label">Confidence</div>
+                        <div className="chat__match-score">
+                          {formatSimilarity(message.functionConfidence)}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                   {message.matches &&
                   (message.matches.functions?.length ||
                     message.matches.topics?.length) ? (
