@@ -1,7 +1,7 @@
 # kachna.py
 import json
 import sys
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 import psycopg
 from psycopg.rows import dict_row
 
@@ -79,6 +79,8 @@ class Function:
     def _json_default(self, value):
         if isinstance(value, (date, datetime, time)):
             return value.isoformat()
+        if isinstance(value, timedelta):
+            return str(value)
         raise TypeError(f"Object of type {value.__class__.__name__} is not JSON serializable")
 
     def _print_json(self, payload):

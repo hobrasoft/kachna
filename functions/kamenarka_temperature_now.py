@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from kachna import Function
 
 f = Function()
@@ -20,6 +22,7 @@ f.setDbPassword     ("kamenarka.eu")
 
 f.setSQL("""
         SELECT
+            1.0 / (1.0 + ln(1 + to_hours(now() - t.date) / 3.0)) as confidence,
             t.date AS timestamp,
             round(t.temperature*10)/10 AS temperature_c,
             round(t.pressure*10)/10    AS pressure_hpa
@@ -32,13 +35,7 @@ f.setSQL("""
     )
 
 f.setFormat("sentence")
-#f.setPrompt(
-#    "Zformátuj odpověď jako jednu větu v češtině. "
-#    "Použij jednotky °C a hPa. "
-#    "Nepřidávej komentáře ani domněnky."
-#)
-f.setAdvice("Stručně odpověz, kolik je stupňů a jaký je tlak.")
-f.setConfidence(1.0)
+f.setAdvice("Stručně odpověz, kolik je stupňů a kdy byla hodnota naměřena.")
 
 f.exec()
 

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from kachna import Function
 
 f = Function()
@@ -42,13 +44,7 @@ f.setSQL("""
     """
     )
 
-f.setFormat("sentence")
-#f.setPrompt(
-#    "Zformátuj odpověď jako jednu větu v češtině. "
-#    "Použij jednotky °C a hPa. "
-#    "Nepřidávej komentáře ani domněnky."
-#)
-f.setAdvice("Stručně odpověz, kolik je stupňů a jaký je tlak.")
+f.setFormat("tables")
 f.setConfidence(1.0)
 
 f.exec()
