@@ -3,13 +3,13 @@
 from kachna import Function
 
 f = Function()
-f.setName           ("Práce Hofman")
-f.setDescription    ("Zjistí rozpracované úkoly Tomáše Hofmana")
-f.addQuestion       ("Na čem pracuje Tomáš Hofman?")
-f.addQuestion       ("Co dělá Tomáš Hofman?")
-f.addQuestion       ("Jakou práci má Tomáš Hofman rozdělanou?")
-f.addQuestion       ("Jaký je pracovní výkaz Tomáše Hofmana?")
-f.addQuestion       ("Co má právě rozpracováno Tomáš Hofman?")
+f.setName           ("Práce Bravenec")
+f.setDescription    ("Zjistí rozpracované úkoly Petra Bravence")
+f.addQuestion       ("Na čem pracuje Petr Bravenec?")
+f.addQuestion       ("Co dělá Petr Bravenec?")
+f.addQuestion       ("Jakou práci má Petr Bravenec rozdělanou?")
+f.addQuestion       ("Jaký je pracovní výkaz Petr Bravence?")
+f.addQuestion       ("Co má právě rozpracováno Petr Bravenec?")
 
 f.setDbHost         ("hrabos")
 f.setDbDatabase     ("prace.hobrasoft.cz")
@@ -18,7 +18,7 @@ f.setDbUser         ("tycho")
 f.setSQL("""
     with params as (
         select
-            3 as "user", 
+            2 as "user", 
             true as valid
         ),
     subdotaz as (

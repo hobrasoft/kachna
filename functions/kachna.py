@@ -29,6 +29,7 @@ class Function:
         self.advice = None
 
         self.confidence = 1.0
+        self._confidence_override = None
 
     # ---- name ----
     def setName(self, name):
@@ -74,7 +75,20 @@ class Function:
         self.advice = text.strip()
 
     def setConfidence(self, value):
-        self.confidence = float(value)
+        self._confidence_override = float(value)
+        self.confidence = self._confidence_override
+
+    def _resolve_confidence(self, data):
+        if self._confidence_override is not None:
+            return self._confidence_override
+
+        if isinstance(data, dict) and "confidence" in data:
+            return float(data["confidence"])
+
+        if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict) and "confidence" in data[0]:
+            return float(data[0]["confidence"])
+
+        return 1.0
 
     def _json_default(self, value):
         if isinstance(value, (date, datetime, time)):
@@ -140,6 +154,7 @@ class Function:
 
         try:
             response["data"] = self._execute_sql()
+            response["confidence"] = self._resolve_confidence(response["data"])
         except Exception as exc:
             response["error"] = str(exc)
 
