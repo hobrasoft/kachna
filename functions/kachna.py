@@ -1,10 +1,9 @@
 # kachna.py
-import csv
-import io
 import json
-import os
-import subprocess
 import sys
+from datetime import date, datetime, time
+import psycopg
+from psycopg.rows import dict_row
 
 
 class Function:
@@ -77,8 +76,13 @@ class Function:
     def setConfidence(self, value):
         self.confidence = float(value)
 
+    def _json_default(self, value):
+        if isinstance(value, (date, datetime, time)):
+            return value.isoformat()
+        raise TypeError(f"Object of type {value.__class__.__name__} is not JSON serializable")
+
     def _print_json(self, payload):
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        print(json.dumps(payload, ensure_ascii=False, indent=2, default=self._json_default))
 
     def _describe(self):
         self._print_json(
@@ -101,37 +105,19 @@ class Function:
         if missing:
             raise ValueError(f"Missing required configuration: {', '.join(missing)}")
 
-        env = os.environ.copy()
-        if self.db_password is not None:
-            env["PGPASSWORD"] = self.db_password
+        with psycopg.connect(
+            host=self.db_host,
+            dbname=self.db_name,
+            user=self.db_user,
+            password=self.db_password,
+            row_factory=dict_row,
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(self.sql_query)
+                if cursor.description is None:
+                    return []
+                rows = cursor.fetchall()
 
-        result = subprocess.run(
-            [
-                "psql",
-                "-h",
-                self.db_host,
-                "-U",
-                self.db_user,
-                self.db_name,
-                "--csv",
-                "-v",
-                "ON_ERROR_STOP=1",
-                "-c",
-                self.sql_query,
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env,
-            check=True,
-        )
-
-        output = result.stdout.strip()
-        if not output:
-            return []
-
-        reader = csv.DictReader(io.StringIO(output))
-        rows = list(reader)
         if len(rows) == 1:
             return rows[0]
         return rows

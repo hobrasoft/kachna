@@ -32,11 +32,11 @@ f.setSQL("""
     )
 
 f.setFormat("sentence")
-f.setPrompt(
-    "Zformátuj odpověď jako jednu větu v češtině. "
-    "Použij jednotky °C a hPa. "
-    "Nepřidávej komentáře ani domněnky."
-)
+#f.setPrompt(
+#    "Zformátuj odpověď jako jednu větu v češtině. "
+#    "Použij jednotky °C a hPa. "
+#    "Nepřidávej komentáře ani domněnky."
+#)
 f.setAdvice("Stručně odpověz, kolik je stupňů a jaký je tlak.")
 f.setConfidence(1.0)
 
