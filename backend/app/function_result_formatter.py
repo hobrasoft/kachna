@@ -91,6 +91,8 @@ Zformátuj zadání do odpovědi:
             top_p=0.1,
             presence_penalty=0,
             frequency_penalty=0,
+            max_tokens=96,
+            stop=["\n\n", "</s>", "[INST]", "<|im_start|>", "<|im_end|>"],
         ).model_dump()
         data = await self._forward_to_llm(
             self._base_url,

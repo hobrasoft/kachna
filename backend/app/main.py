@@ -80,6 +80,14 @@ class CompletionRequest(BaseModel):
     top_p: Optional[float] = None
     presence_penalty: Optional[float] = None
     frequency_penalty: Optional[float] = None
+    max_tokens: int = 96
+    stop: Optional[List[str]] = [
+        "\n\n",
+        "</s>",
+        "[INST]",
+        "<|im_start|>",
+        "<|im_end|>",
+    ]
 
 
 class ChatChoice(BaseModel):
