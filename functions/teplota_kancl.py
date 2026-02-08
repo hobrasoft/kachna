@@ -1,77 +1,47 @@
 #!/usr/bin/env python3
+
 import requests
-import configparser
-from pathlib import Path
-import sys
-import json
+from kachna import Function
+from datetime import datetime, timezone
+import math
 
-CONFIG_FILE = Path.home() / ".kachna.conf"
-
-
-def describe():
-    print(json.dumps({
-        "name": "Teplota v kanceláři",
-        "description": "Načte aktuální teploty ze senzorů v Home Assistant",
-        "questions": [
-            "Kolik je v kanceláři stupňů?",
-            "Jaká je momentální aktuální teplota v kanceláři?",
-            "Jaká je v kanceláři aktuální momentální teplota?"
-        ],
-        "params": {}
-    }, indent=2))
-
-
-def load_config():
-    if not CONFIG_FILE.exists():
-        raise FileNotFoundError(f"Config file not found: {CONFIG_FILE}")
-
-    cfg = configparser.ConfigParser()
-    cfg.read(CONFIG_FILE)
-
-    token = cfg.get("ha", "token", fallback=None)
-    url = cfg.get("ha", "url", fallback="http://homeassistant.local:8123")
-
-    if not token:
-        raise ValueError("Missing [ha] token in config")
-
-    # odstraní případné uvozovky
-    token = token.strip().strip("'").strip('"')
-
-    return url, token
-
-
-def get_state(entity_id: str, url: str, token: str):
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-    }
+def provider():
+    token = f.config.get("ha", "token")
+    url   = f.config.get("ha", "url")
+    item  = "sensor.kancelar_u_podlahy"
 
     r = requests.get(
-        f"{url}/api/states/{entity_id}",
-        headers=headers,
-        timeout=5
-    )
+        f"{url}/api/states/{item}",
+        headers = { "Authorization": f"Bearer {token}", "Content-Type": "application/json" },
+        timeout = 5
+        )
     r.raise_for_status()
 
     data = r.json()
-    return float(data["state"])
+
+    ts = datetime.fromisoformat(data["last_updated"])
+    now = datetime.now(timezone.utc)
+    age_hours = (now - ts).total_seconds() / 3600.0
+    confidence = 1.0 / (1.0 + math.log(1.0 + age_hours / 3.0))
+
+    return {
+        "temperature": float(data["state"]),
+        "timestamp": data["last_updated"],
+        "confidence": confidence
+        }
 
 
-def execute():
-    ha_url, ha_token = load_config()
+f = Function()
+f.setName           ("Teplota v Kanceláři")
+f.setDescription    ("Zjistí aktuální teplotu v kanceláři ze sensorů v Home Assistant")
+f.addQuestion       ("Kolik je v kanceláři stupňů?")
+f.addQuestion       ("Jaká je momentální aktuální teplota v kanceláři?")
+f.addQuestion       ("Kolik je v kanceláři stupňů?")
+f.setAdvice         ("Stručně odpověz, kolik je stupňů a kdy byla hodnota naměřena.")
+f.setFormat         ("sentence")
+f.setProvider       (provider)
+f.exec()
 
-    venku = get_state("sensor.kancelar_u_podlahy", ha_url, ha_token)
-
-    print(json.dumps({
-        "teplota": venku,
-        "unit": "°C",
-        "source": "Home Assistant"
-    }, indent=2))
 
 
-if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--describe":
-        describe()
-    else:
-        execute()
 

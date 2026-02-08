@@ -4,10 +4,36 @@ import sys
 from datetime import date, datetime, time, timedelta
 import psycopg
 from psycopg.rows import dict_row
+import configparser
+from pathlib import Path
+
+
+class Config:
+    def __init__(self, path=None):
+        self.path = Path(path) if path else Path.home() / ".kachna.conf"
+
+        if not self.path.exists():
+            raise FileNotFoundError(f"Config file not found: {self.path}")
+
+        self.cfg = configparser.ConfigParser()
+        self.cfg.read(self.path)
+
+    def get(self, section, key, fallback=None, *, required=False):
+        value = self.cfg.get(section, key, fallback=fallback)
+
+        if required and value is None:
+            raise ValueError(f"Missing [{section}] {key} in config")
+
+        if isinstance(value, str):
+            value = value.strip().strip('"').strip("'")
+
+        return value
 
 
 class Function:
     def __init__(self):
+        self.provider = None
+        self.config = Config()
         self.name = None
         self.description = None
         self.questions = []
@@ -30,6 +56,10 @@ class Function:
 
         self.confidence = 1.0
         self._confidence_override = None
+
+    # ---- poskytovatel dat ----
+    def setProvider(self, provider):
+        self.provider = provider
 
     # ---- name ----
     def setName(self, name):
@@ -58,6 +88,7 @@ class Function:
 
     # ---- sql executor ----
     def setSQL(self, sql):
+        self.setProvider(self._execute_sql)
         self.sql_query = sql
 
     # ---- output ----
@@ -152,10 +183,14 @@ class Function:
             "data": None,
         }
 
+        if not callable(self.provider):
+            raise TypeError("Provider musí být callable")
+
         try:
-            response["data"] = self._execute_sql()
+            response["data"] = self.provider()
             response["confidence"] = self._resolve_confidence(response["data"])
         except Exception as exc:
             response["error"] = str(exc)
 
         self._print_json(response)
+
