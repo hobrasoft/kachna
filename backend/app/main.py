@@ -38,7 +38,7 @@ FUNCTION_SIMILARITY_THRESHOLD = 0.85
 DB = load_database()
 FUNCTIONS_ROOT = Path(__file__).resolve().parents[2] / "functions"
 
-
+print ("--------", BackendConfig.corsAllowOrigins())
 
 class ModelCard(BaseModel):
     id: str

@@ -1,82 +1,47 @@
 #!/usr/bin/env python3
+
 import requests
-import configparser
-from pathlib import Path
-import sys
-import json
+from kachna import Function
+from datetime import datetime, timezone
+import math
 
-CONFIG_FILE = Path.home() / ".kachna.conf"
-
-
-def describe():
-    print(json.dumps({
-        "name": "Atmosferický tlak v Rožnově",
-        "description": "Načte aktuální tlak ze senzorů v Home Assistant",
-        "questions": [
-            "Jaký je aktuální atmosférický tlak?",
-            "Jaký je tlak přepočtený na hladinu moře?",
-            "Jaký je tlak vzduchu?",
-            "Jaký je tlak v Rožnově?"
-        ],
-        "params": {}
-    }, indent=2))
-
-
-def load_config():
-    if not CONFIG_FILE.exists():
-        raise FileNotFoundError(f"Config file not found: {CONFIG_FILE}")
-
-    cfg = configparser.ConfigParser()
-    cfg.read(CONFIG_FILE)
-
-    token = cfg.get("ha", "token", fallback=None)
-    url = cfg.get("ha", "url", fallback="http://homeassistant.local:8123")
-
-    if not token:
-        raise ValueError("Missing [ha] token in config")
-
-    # odstraní případné uvozovky
-    token = token.strip().strip("'").strip('"')
-
-    return url, token
-
-
-def get_state(entity_id: str, url: str, token: str):
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-    }
+def provider():
+    token = f.config.get("ha", "token")
+    url   = f.config.get("ha", "url")
+    item  = "sensor.atmosfericky_tlak"
 
     r = requests.get(
-        f"{url}/api/states/{entity_id}",
-        headers=headers,
-        timeout=5
-    )
+        f"{url}/api/states/{item}",
+        headers = { "Authorization": f"Bearer {token}", "Content-Type": "application/json" },
+        timeout = 5
+        )
     r.raise_for_status()
 
     data = r.json()
-    return float(data["state"])
+
+    ts = datetime.fromisoformat(data["last_updated"])
+    now = datetime.now(timezone.utc)
+    age_hours = (now - ts).total_seconds() / 3600.0
+    confidence = 1.0 / (1.0 + math.log(1.0 + age_hours / 3.0))
+
+    return {
+        "temperature": float(data["state"]),
+        "timestamp": data["last_updated"],
+        "confidence": confidence,
+        "units": "hPa"
+        }
 
 
-def execute():
-    ha_url, ha_token = load_config()
-
-    tlak_skutecny   = get_state("sensor.atmosfericky_tlak", ha_url, ha_token)
-    tlak_prepocteny = get_state("sensor.atmosfericky_tlak_prepocteny_na_hladinu_more_2", ha_url, ha_token)
-
-    print(json.dumps({
-        "pressure": tlak_skutecny,
-        "pressure_at_sea_level": tlak_prepocteny,
-        "unit": "hPa",
-        "prompt": "Uváděj přednostně tlak přepočtený na hladinu moře v položce pressure_at_sea_level",
-        "source": "Home Assistant",
-        "location": "Rožnov pod Radhoštěm"
-    }, indent=2))
-
-
-if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--describe":
-        describe()
-    else:
-        execute()
+f = Function()
+f.setName           ("Atmosférický tlak v Rožnově")
+f.setDescription    ("Zjistí aktuální tlak ze sensorů v Home Assistant")
+f.addQuestion       ("Kolik je venku stupňů?")
+f.addQuestion       ("Jaký je momentální aktuální atmosférický tlak?")
+f.addQuestion       ("Jaký je tlak přepočtený na hladinu moře?")
+f.addQuestion       ("Jaký je tlak vzduchu?")
+f.addQuestion       ("Jaký je tlak v Rožnově?")
+f.setAdvice         ("Stručně odpověz, jaký je tlak v hPa!")
+f.setFormat         ("sentence")
+f.setProvider       (provider)
+f.exec()
 
