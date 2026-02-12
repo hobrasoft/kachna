@@ -147,6 +147,15 @@ function ChatPanel({ apiUrl, user }) {
   const [editingTitle, setEditingTitle] = useState("");
   const [isSavingConversation, setIsSavingConversation] = useState(false);
 
+  const sortBySimilarity = (items, getLabel) =>
+    [...items].sort((a, b) => {
+      const diff = (b?.similarity ?? 0) - (a?.similarity ?? 0);
+      if (diff !== 0) {
+        return diff;
+      }
+      return (getLabel(a) ?? "").localeCompare(getLabel(b) ?? "");
+    });
+
   const formatSimilarity = (value) => {
     if (typeof value !== "number") {
       return "";
@@ -369,7 +378,12 @@ function ChatPanel({ apiUrl, user }) {
       return;
     }
 
-    const nextMessages = [...messages, { role: "user", content: question }];
+    const assistantPlaceholderId = `assistant-${Date.now()}`;
+    const nextMessages = [
+      ...messages,
+      { role: "user", content: question },
+      { id: assistantPlaceholderId, role: "assistant", content: "" },
+    ];
     setMessages(nextMessages);
     setInput("");
     setError("");
@@ -383,6 +397,7 @@ function ChatPanel({ apiUrl, user }) {
           user: user.user,
           model,
           content: question,
+          stream: true,
         },
       );
 
@@ -390,51 +405,107 @@ function ChatPanel({ apiUrl, user }) {
         throw new Error("Nepodařilo se získat odpověď.");
       }
 
-      const data = await response.json();
-      const reply = data?.assistant_message?.text?.trim();
-      if (!reply) {
-        throw new Error("Odpověď je prázdná.");
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("text/event-stream") || !response.body) {
+        throw new Error("Stream odpověď není k dispozici.");
       }
-      const matchedFunctions = Array.isArray(data?.matched_functions)
-        ? data.matched_functions
-        : [];
-      const matchedTopics = Array.isArray(data?.matched_topics)
-        ? data.matched_topics
-        : [];
-      const sortBySimilarity = (items, getLabel) =>
-        [...items].sort((a, b) => {
-          const diff = (b?.similarity ?? 0) - (a?.similarity ?? 0);
-          if (diff !== 0) {
-            return diff;
-          }
-          return (getLabel(a) ?? "").localeCompare(getLabel(b) ?? "");
-        });
-      if (data?.conversation) {
-        setConversations((prev) =>
-          prev.map((item) =>
-            item.conversation === data.conversation.conversation
-              ? data.conversation
-              : item,
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+      let finalChunk = null;
+
+      const applyFinalChunk = (chunk) => {
+        const matchedFunctions = Array.isArray(chunk?.matched_functions)
+          ? chunk.matched_functions
+          : [];
+        const matchedTopics = Array.isArray(chunk?.matched_topics)
+          ? chunk.matched_topics
+          : [];
+        if (chunk?.conversation) {
+          setConversations((prev) =>
+            prev.map((item) =>
+              item.conversation === chunk.conversation.conversation
+                ? chunk.conversation
+                : item,
+            ),
+          );
+        }
+        const parsedConfidence = Number.parseFloat(chunk?.function_confidence);
+        const functionConfidence = Number.isFinite(parsedConfidence)
+          ? parsedConfidence
+          : null;
+
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id !== assistantPlaceholderId
+              ? message
+              : {
+                  ...message,
+                  content: chunk?.assistant_message?.text?.trim() ?? message.content,
+                  functionConfidence,
+                  matches: {
+                    functions: sortBySimilarity(
+                      matchedFunctions,
+                      (item) => item?.name,
+                    ),
+                    topics: sortBySimilarity(matchedTopics, (item) => item?.text),
+                  },
+                },
           ),
         );
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+
+        events.forEach((event) => {
+          const lines = event
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.startsWith("data:"));
+          if (lines.length === 0) {
+            return;
+          }
+          const data = lines
+            .map((line) => line.slice(5).trim())
+            .join("\n");
+          if (!data || data === "[DONE]") {
+            return;
+          }
+          try {
+            const chunk = JSON.parse(data);
+            if (chunk?.type === "delta" && typeof chunk.content === "string") {
+              setMessages((prev) =>
+                prev.map((message) =>
+                  message.id !== assistantPlaceholderId
+                    ? message
+                    : { ...message, content: `${message.content}${chunk.content}` },
+                ),
+              );
+            }
+            if (chunk?.type === "done") {
+              finalChunk = chunk;
+            }
+          } catch (parseError) {
+            console.error(parseError);
+          }
+        });
       }
-      const parsedConfidence = Number.parseFloat(data?.function_confidence);
-      const functionConfidence = Number.isFinite(parsedConfidence)
-        ? parsedConfidence
-        : null;
-      setMessages([
-        ...nextMessages,
-        {
-          role: "assistant",
-          content: reply,
-          functionConfidence,
-          matches: {
-            functions: sortBySimilarity(matchedFunctions, (item) => item?.name),
-            topics: sortBySimilarity(matchedTopics, (item) => item?.text),
-          },
-        },
-      ]);
+
+      if (finalChunk) {
+        applyFinalChunk(finalChunk);
+      }
     } catch (err) {
+      setMessages((prev) =>
+        prev.filter((message) => message.id !== assistantPlaceholderId),
+      );
       setError(err.message);
     } finally {
       setIsLoading(false);

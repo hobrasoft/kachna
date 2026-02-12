@@ -9,6 +9,7 @@ from typing import Any, List, Optional
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .config import BackendConfig
@@ -169,6 +170,7 @@ class ChatTurnRequest(BaseModel):
     user: int
     model: str
     content: str
+    stream: bool = False
 
 
 class ChatTurnResponse(BaseModel):
@@ -818,14 +820,11 @@ async def list_conversation_messages(conversation_id: int) -> List[MessageRespon
     ]
 
 
-@app.post(
-    "/v1/conversations/{conversation_id}/chat",
-    response_model=ChatTurnResponse,
-)
+@app.post("/v1/conversations/{conversation_id}/chat", response_model=ChatTurnResponse)
 async def create_conversation_chat_turn(
     conversation_id: int,
     payload: ChatTurnRequest,
-) -> ChatTurnResponse:
+) -> Any:
     conversation = await DB.get_conversation(conversation_id)
     conversation = _ensure_row(conversation, "Konverzace nenalezena.")
     if conversation["user"] != payload.user:
@@ -874,6 +873,36 @@ async def create_conversation_chat_turn(
         if updated_conversation is not None:
             conversation = updated_conversation
 
+    matched_functions = [
+        FunctionMatch(
+            function=row["function"],
+            name=row["name"],
+            description=row["description"],
+            active=row["active"],
+            type=row["type"],
+            script=row["script"],
+            similarity=float(row["similarity"]),
+            first_question=row["first_question"],
+        )
+        for row in matched_function_rows
+    ]
+    matched_topics = [
+        TopicMatch(
+            topic=row["topic"],
+            topic_category=row["topic_category"],
+            text=row["text"],
+            similarity=float(row["similarity"]),
+        )
+        for row in matched_topic_rows
+    ]
+
+    conversation_response = ConversationResponse(
+        conversation=conversation["conversation"],
+        user=conversation["user"],
+        date=conversation["date"],
+        title=conversation["title"],
+    )
+
     if selected_function is not None:
         function_result = await _execute_function_script(selected_function["script"])
         function_confidence = _extract_function_confidence(function_result)
@@ -882,21 +911,129 @@ async def create_conversation_chat_turn(
             function_result,
             payload.model,
         )
+        if payload.stream:
+            async def function_stream() -> Any:
+                payload_chunk = {"type": "delta", "content": reply}
+                yield f"data: {json.dumps(payload_chunk, ensure_ascii=False)}\n\n"
+                assistant_embedding = await _create_embedding(reply)
+                assistant_row = await DB.create_message(
+                    conversation_id,
+                    "assistant",
+                    reply,
+                    None,
+                    _vector_from_list(assistant_embedding),
+                )
+                assistant_row = _ensure_row(assistant_row, "Odpověď nebyla uložena.")
+                done_chunk = {
+                    "type": "done",
+                    "conversation": conversation_response.model_dump(mode="json"),
+                    "assistant_message": MessageResponse(
+                        message=assistant_row["message"],
+                        conversation=assistant_row["conversation"],
+                        role=assistant_row["role"],
+                        date=assistant_row["date"],
+                        text=assistant_row["text"],
+                        token_count=assistant_row["token_count"],
+                    ).model_dump(mode="json"),
+                    "matched_functions": [item.model_dump(mode="json") for item in matched_functions],
+                    "matched_topics": [item.model_dump(mode="json") for item in matched_topics],
+                    "function_confidence": function_confidence,
+                }
+                yield f"data: {json.dumps(done_chunk, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(function_stream(), media_type="text/event-stream")
     else:
         function_confidence = None
         history_rows = await DB.list_messages(conversation_id)
         history_messages = [
             ChatMessage(role=row["role"], content=row["text"]) for row in history_rows
         ]
+        llm_payload = ChatCompletionRequest(
+            model=payload.model,
+            messages=history_messages,
+        ).model_dump()
+
+        if payload.stream:
+            async def llm_stream() -> Any:
+                reply_parts: list[str] = []
+                async with httpx.AsyncClient(
+                    timeout=CHAT_TIMEOUT_S,
+                    follow_redirects=True,
+                ) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{CHAT_BASE_URL}/v1/chat/completions",
+                        headers={
+                            "Accept": "text/event-stream",
+                            "Content-Type": "application/json",
+                            **_llm_headers(CHAT_API_KEY),
+                        },
+                        json={**llm_payload, "stream": True},
+                    ) as response:
+                        if response.status_code >= 400:
+                            detail = await response.aread()
+                            raise HTTPException(
+                                status_code=response.status_code,
+                                detail=detail.decode("utf-8", errors="ignore") or "LLM stream selhal.",
+                            )
+                        async for line in response.aiter_lines():
+                            if not line or not line.startswith("data:"):
+                                continue
+                            payload_line = line[5:].strip()
+                            if payload_line == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(payload_line)
+                            except json.JSONDecodeError:
+                                continue
+                            choice = (chunk.get("choices") or [{}])[0]
+                            delta = choice.get("delta") if isinstance(choice, dict) else {}
+                            content = delta.get("content") if isinstance(delta, dict) else None
+                            if isinstance(content, str) and content:
+                                reply_parts.append(content)
+                                delta_chunk = {"type": "delta", "content": content}
+                                yield f"data: {json.dumps(delta_chunk, ensure_ascii=False)}\n\n"
+
+                reply_text = "".join(reply_parts).strip()
+                if not reply_text:
+                    raise HTTPException(status_code=502, detail="Odpověď je prázdná.")
+
+                assistant_embedding = await _create_embedding(reply_text)
+                assistant_row = await DB.create_message(
+                    conversation_id,
+                    "assistant",
+                    reply_text,
+                    None,
+                    _vector_from_list(assistant_embedding),
+                )
+                assistant_row = _ensure_row(assistant_row, "Odpověď nebyla uložena.")
+                done_chunk = {
+                    "type": "done",
+                    "conversation": conversation_response.model_dump(mode="json"),
+                    "assistant_message": MessageResponse(
+                        message=assistant_row["message"],
+                        conversation=assistant_row["conversation"],
+                        role=assistant_row["role"],
+                        date=assistant_row["date"],
+                        text=assistant_row["text"],
+                        token_count=assistant_row["token_count"],
+                    ).model_dump(mode="json"),
+                    "matched_functions": [item.model_dump(mode="json") for item in matched_functions],
+                    "matched_topics": [item.model_dump(mode="json") for item in matched_topics],
+                    "function_confidence": function_confidence,
+                }
+                yield f"data: {json.dumps(done_chunk, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(llm_stream(), media_type="text/event-stream")
+
         data = await _forward_to_llm(
             CHAT_BASE_URL,
             "/v1/chat/completions",
             CHAT_TIMEOUT_S,
             CHAT_API_KEY,
-            ChatCompletionRequest(
-                model=payload.model,
-                messages=history_messages,
-            ).model_dump(),
+            llm_payload,
         )
         data = _sanitize_llm_response(data)
         choice = (data.get("choices") or [{}])[0]
@@ -917,10 +1054,10 @@ async def create_conversation_chat_turn(
 
     return ChatTurnResponse(
         conversation=ConversationResponse(
-            conversation=conversation["conversation"],
-            user=conversation["user"],
-            date=conversation["date"],
-            title=conversation["title"],
+            conversation=conversation_response.conversation,
+            user=conversation_response.user,
+            date=conversation_response.date,
+            title=conversation_response.title,
         ),
         user_message=MessageResponse(
             message=user_row["message"],
@@ -938,28 +1075,8 @@ async def create_conversation_chat_turn(
             text=assistant_row["text"],
             token_count=assistant_row["token_count"],
         ),
-        matched_functions=[
-            FunctionMatch(
-                function=row["function"],
-                name=row["name"],
-                description=row["description"],
-                active=row["active"],
-                type=row["type"],
-                script=row["script"],
-                similarity=float(row["similarity"]),
-                first_question=row["first_question"],
-            )
-            for row in matched_function_rows
-        ],
-        matched_topics=[
-            TopicMatch(
-                topic=row["topic"],
-                topic_category=row["topic_category"],
-                text=row["text"],
-                similarity=float(row["similarity"]),
-            )
-            for row in matched_topic_rows
-        ],
+        matched_functions=matched_functions,
+        matched_topics=matched_topics,
         function_confidence=function_confidence,
     )
 
