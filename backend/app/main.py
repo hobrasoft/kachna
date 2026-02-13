@@ -393,7 +393,7 @@ def _extract_json_payload(output: str) -> str | None:
     return output[start : end + 1]
 
 
-async def _execute_function_script(script: str) -> Any:
+async def _execute_function_script(script: str, user_question: str) -> Any:
     if not script.strip():
         raise HTTPException(status_code=502, detail="Funkce nemá definovaný skript.")
     args = shlex.split(script)
@@ -404,6 +404,8 @@ async def _execute_function_script(script: str) -> Any:
         candidate = FUNCTIONS_ROOT / command
         if candidate.exists():
             args[0] = str(candidate)
+    if user_question:
+        args.extend(["--query", user_question])
     process = await asyncio.create_subprocess_exec(
         *args,
         stdout=asyncio.subprocess.PIPE,
@@ -904,7 +906,7 @@ async def create_conversation_chat_turn(
     )
 
     if selected_function is not None:
-        function_result = await _execute_function_script(selected_function["script"])
+        function_result = await _execute_function_script(selected_function["script"], payload.content)
         function_confidence = _extract_function_confidence(function_result)
         reply = await FUNCTION_RESULT_FORMATTER.format(
             payload.content,

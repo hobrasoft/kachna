@@ -14,12 +14,14 @@ f.addQuestion       ("Jaký je nyní tlak na Kamenárce?")
 f.addQuestion       ("Kolik je stupňů na Kamenárce?")
 f.addQuestion       ("Kolik je nyní stupňů na Kamenárce?")
 f.addQuestion       ("Kolik je teď stupňů na Kamenárce?")
+f.setFormat         ("sentence")
+f.setAdvice         ("Stručně odpověz, kolik je stupňů a kdy byla hodnota naměřena.")
 
+# Dotazovací část
 f.setDbHost         ("hrabos")
 f.setDbDatabase     ("kamenarka.eu")
 f.setDbUser         ("kamenarka.eu")
 f.setDbPassword     ("kamenarka.eu")
-
 f.setSQL("""
         SELECT
             1.0 / (1.0 + ln(1 + to_hours(now() - t.date) / 3.0)) as confidence,
@@ -34,8 +36,6 @@ f.setSQL("""
     """
     )
 
-f.setFormat("sentence")
-f.setAdvice("Stručně odpověz, kolik je stupňů a kdy byla hodnota naměřena.")
 
 f.exec()
 

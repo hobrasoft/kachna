@@ -1,7 +1,10 @@
 # kachna.py
 import json
+import re
 import sys
 from datetime import date, datetime, time, timedelta
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 import psycopg
 from psycopg.rows import dict_row
 import configparser
@@ -37,6 +40,7 @@ class Function:
         self.name = None
         self.description = None
         self.questions = []
+        self.params = []
 
         # executor
         self.db_host = None
@@ -56,10 +60,16 @@ class Function:
 
         self.confidence = 1.0
         self._confidence_override = None
+        self.user_question = ""
 
     # ---- poskytovatel dat ----
     def setProvider(self, provider):
         self.provider = provider
+
+    # ---- sql executor ----
+    def setSQL(self, sql):
+        self.setProvider(self._execute_sql)
+        self.sql_query = sql
 
     # ---- name ----
     def setName(self, name):
@@ -73,6 +83,20 @@ class Function:
     def addQuestion(self, text):
         self.questions.append(text)
 
+    def param(self, id, prompt, value=None):
+        param_id = str(id).strip()
+        if not param_id:
+            raise ValueError("Parametr musí mít neprázdné id")
+        if any(item["id"] == param_id for item in self.params):
+            raise ValueError(f"Parametr '{param_id}' je definovaný vícekrát")
+        self.params.append(
+            {
+                "id": param_id,
+                "prompt": str(prompt),
+                "value": value,
+            }
+        )
+
     # ---- database config ----
     def setDbHost(self, host):
         self.db_host = host
@@ -85,11 +109,6 @@ class Function:
 
     def setDbPassword(self, password):
         self.db_password = password
-
-    # ---- sql executor ----
-    def setSQL(self, sql):
-        self.setProvider(self._execute_sql)
-        self.sql_query = sql
 
     # ---- output ----
     def setOutput(self, schema):
@@ -137,9 +156,144 @@ class Function:
                 "name": self.name,
                 "description": self.description,
                 "questions": self.questions,
-                "params": {},
+                "params": self.params,
             }
         )
+
+    def _llm_base_url(self):
+        llm_base = self.config.get("llm", "base_url")
+        if llm_base:
+            return llm_base.rstrip("/")
+
+        chat_host = self.config.get("chat", "hostname")
+        if chat_host:
+            chat_port = self.config.get("chat", "port", "8097")
+            return f"http://{chat_host}:{chat_port}"
+
+        chat_host = self.config.get("chat", "hostname", "localhost")
+        chat_port = self.config.get("chat", "port", "8097")
+        return f"http://{chat_host}:{chat_port}"
+
+    def _llm_api_key(self):
+        return (
+            self.config.get("chat", "api-key")
+            or self.config.get("chat", "api-key")
+            or self.config.get("llm", "api_key")
+        )
+
+    def _llm_model(self, base_url, headers):
+        model = self.config.get("chat", "model") or self.config.get("chat", "model")
+        if model:
+            return model
+
+        request = Request(f"{base_url}/v1/models", headers=headers, method="GET")
+        with urlopen(request, timeout=10) as response:
+            data = json.loads(response.read().decode("utf-8"))
+
+        models = data.get("data") if isinstance(data, dict) else None
+        if not isinstance(models, list) or not models:
+            raise ValueError("LLM nevrátil žádný model")
+
+        model_id = models[0].get("id") if isinstance(models[0], dict) else None
+        if not isinstance(model_id, str) or not model_id.strip():
+            raise ValueError("LLM model id je neplatný")
+
+        return model_id
+
+    def _call_completion(self, prompt):
+        base_url = self._llm_base_url()
+        api_key = self._llm_api_key()
+
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        model = self._llm_model(base_url, headers)
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "temperature": 0,
+            "max_tokens": 64,
+        }
+        body = json.dumps(payload).encode("utf-8")
+
+        endpoints = ["/v1/completion", "/v1/completions"]
+        last_error = None
+        for endpoint in endpoints:
+            request = Request(f"{base_url}{endpoint}", data=body, headers=headers, method="POST")
+            try:
+                with urlopen(request, timeout=30) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                    choices = data.get("choices") if isinstance(data, dict) else None
+                    if not isinstance(choices, list) or not choices:
+                        raise ValueError("Completion nevrátil choices")
+                    text = choices[0].get("text") if isinstance(choices[0], dict) else None
+                    if not isinstance(text, str):
+                        raise ValueError("Completion nevrátil text")
+                    return text.strip().splitlines()[0]
+            except HTTPError as exc:
+                last_error = exc
+                continue
+            except URLError as exc:
+                raise RuntimeError(f"Volání LLM selhalo: {exc}") from exc
+
+        if last_error is not None:
+            detail = last_error.read().decode("utf-8", errors="ignore")
+            raise RuntimeError(f"LLM odpověděl chybou {last_error.code}: {detail}")
+        raise RuntimeError("Volání LLM selhalo")
+
+    def _resolve_params(self):
+        if not self.params:
+            return {}
+
+        user_question = self.user_question
+        values = {}
+        for param in self.params:
+            value = param.get("value")
+            if value is None:
+                prompt = str(param.get("prompt", "")).replace("{USER_QUESTION}", user_question)
+                value = self._call_completion(prompt)
+                param["value"] = value
+            values[param["id"]] = value
+
+        return values
+
+    def _apply_sql_params(self, sql, params):
+        resolved_sql = sql
+        for key, value in params.items():
+            placeholder = "{" + key + "}"
+            if placeholder not in resolved_sql:
+                continue
+            quoted = "'" + value + "'"
+            resolved_sql = resolved_sql.replace(placeholder, quoted)
+
+        unresolved = re.findall(r"\{([A-Za-z0-9_]+)\}", resolved_sql)
+        if unresolved:
+            missing = ", ".join(sorted(set(unresolved)))
+            raise ValueError(f"Neznámé SQL parametry: {missing}")
+
+        # print (resolved_sql)
+
+        return resolved_sql
+
+    def _parse_cli_args(self):
+        describe = False
+        query = ""
+        args = sys.argv[1:]
+        idx = 0
+        while idx < len(args):
+            arg = args[idx]
+            if arg == "--describe":
+                describe = True
+            elif arg == "--query" and idx + 1 < len(args):
+                idx += 1
+                query = args[idx]
+            idx += 1
+
+        return describe, query
 
     def _execute_sql(self):
         required = {
@@ -159,8 +313,11 @@ class Function:
             password=self.db_password,
             row_factory=dict_row,
         ) as connection:
+            params = self._resolve_params()
+            query = self._apply_sql_params(self.sql_query, params)
+            # print(query)
             with connection.cursor() as cursor:
-                cursor.execute(self.sql_query)
+                cursor.execute(query)
                 if cursor.description is None:
                     return []
                 rows = cursor.fetchall()
@@ -170,7 +327,9 @@ class Function:
         return rows
 
     def exec(self):
-        if len(sys.argv) > 1 and sys.argv[1] == "--describe":
+        describe, query = self._parse_cli_args()
+        self.user_question = query
+        if describe:
             self._describe()
             return
 
@@ -193,4 +352,3 @@ class Function:
             response["error"] = str(exc)
 
         self._print_json(response)
-
