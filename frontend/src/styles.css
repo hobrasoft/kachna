@@ -350,6 +350,18 @@ textarea {
 
 .chat__message-content {
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat__list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.chat__list li {
+  margin: 0;
 }
 
 .chat__table {

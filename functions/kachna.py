@@ -270,12 +270,15 @@ class Function:
             quoted = "'" + value + "'"
             resolved_sql = resolved_sql.replace(placeholder, quoted)
 
+        user_question = self.user_question.replace("'", "")
+        resolved_sql = resolved_sql.replace("{USER_QUESTION}", user_question)
+
         unresolved = re.findall(r"\{([A-Za-z0-9_]+)\}", resolved_sql)
         if unresolved:
             missing = ", ".join(sorted(set(unresolved)))
             raise ValueError(f"Neznámé SQL parametry: {missing}")
 
-        # print (resolved_sql)
+        print (resolved_sql)
 
         return resolved_sql
 

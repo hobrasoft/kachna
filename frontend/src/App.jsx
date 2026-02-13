@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { apiClient } from "./apiClient";
 import logoImage from "./assets/rag-llm-kachna-t.png";
 
@@ -55,6 +55,120 @@ const parseMarkdownTable = (content) => {
       return [...row, ...Array(headerCells.length - row.length).fill("")];
     }),
   };
+};
+
+const parseInlineMarkdown = (text) => {
+  if (typeof text !== "string" || !text) {
+    return [];
+  }
+
+  const parts = [];
+  const pattern = /(\*\*([^*]+)\*\*)/g;
+  let lastIndex = 0;
+  let match = pattern.exec(text);
+
+  while (match) {
+    if (match.index > lastIndex) {
+      parts.push({ type: "text", content: text.slice(lastIndex, match.index) });
+    }
+    parts.push({ type: "bold", content: match[2] });
+    lastIndex = pattern.lastIndex;
+    match = pattern.exec(text);
+  }
+
+  if (lastIndex < text.length) {
+    parts.push({ type: "text", content: text.slice(lastIndex) });
+  }
+
+  return parts;
+};
+
+const renderInlineMarkdown = (text, keyPrefix) =>
+  parseInlineMarkdown(text).map((part, index) => {
+    const key = `${keyPrefix}-${index}`;
+    if (part.type === "bold") {
+      return <strong key={key}>{part.content}</strong>;
+    }
+    return <Fragment key={key}>{part.content}</Fragment>;
+  });
+
+const parseMarkdownBlocks = (content) => {
+  if (typeof content !== "string") {
+    return [];
+  }
+
+  const normalized = content.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  const blocks = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index];
+    const trimmedLine = line.trim();
+
+    if (!trimmedLine) {
+      index += 1;
+      continue;
+    }
+
+    if (
+      index + 1 < lines.length &&
+      trimmedLine.includes("|") &&
+      lines[index + 1].trim().includes("|")
+    ) {
+      const tableLines = [line];
+      let tableIndex = index + 1;
+      while (tableIndex < lines.length) {
+        const candidate = lines[tableIndex];
+        if (!candidate.trim() || !candidate.includes("|")) {
+          break;
+        }
+        tableLines.push(candidate);
+        tableIndex += 1;
+      }
+      const parsedTable = parseMarkdownTable(tableLines.join("\n"));
+      if (parsedTable) {
+        blocks.push({ type: "table", table: parsedTable });
+        index = tableIndex;
+        continue;
+      }
+    }
+
+    if (trimmedLine.startsWith("- ")) {
+      const items = [];
+      let listIndex = index;
+      while (listIndex < lines.length) {
+        const listLine = lines[listIndex].trim();
+        if (!listLine.startsWith("- ")) {
+          break;
+        }
+        items.push(listLine.slice(2).trim());
+        listIndex += 1;
+      }
+      blocks.push({ type: "list", items });
+      index = listIndex;
+      continue;
+    }
+
+    const paragraphLines = [line];
+    let paragraphIndex = index + 1;
+    while (paragraphIndex < lines.length) {
+      const paragraphLine = lines[paragraphIndex];
+      const trimmedParagraphLine = paragraphLine.trim();
+      if (!trimmedParagraphLine) {
+        break;
+      }
+      if (trimmedParagraphLine.startsWith("- ")) {
+        break;
+      }
+      paragraphLines.push(paragraphLine);
+      paragraphIndex += 1;
+    }
+    blocks.push({ type: "paragraph", text: paragraphLines.join("\n") });
+    index = paragraphIndex;
+  }
+
+  return blocks;
 };
 
 function SectionCard({ title, children }) {
@@ -530,32 +644,75 @@ function ChatPanel({ apiUrl, user }) {
 
   const visibleMessages = messages.filter((message) => message.role !== "system");
   const renderMessageContent = (content) => {
-    const table = parseMarkdownTable(content);
-    if (table) {
-      return (
-        <div className="chat__message-content">
-          <table className="chat__table">
-            <thead>
-              <tr>
-                {table.headers.map((header, headerIndex) => (
-                  <th key={`header-${headerIndex}`}>{header}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {table.rows.map((row, rowIndex) => (
-                <tr key={`row-${rowIndex}`}>
-                  {row.map((cell, cellIndex) => (
-                    <td key={`cell-${rowIndex}-${cellIndex}`}>{cell}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
+    const blocks = parseMarkdownBlocks(content);
+    if (blocks.length === 0) {
+      return <p className="chat__message-text">{content}</p>;
     }
-    return <p className="chat__message-text">{content}</p>;
+
+    return (
+      <div className="chat__message-content">
+        {blocks.map((block, blockIndex) => {
+          if (block.type === "table") {
+            return (
+              <table className="chat__table" key={`table-${blockIndex}`}>
+                <thead>
+                  <tr>
+                    {block.table.headers.map((header, headerIndex) => (
+                      <th key={`header-${blockIndex}-${headerIndex}`}>
+                        {renderInlineMarkdown(
+                          header,
+                          `header-${blockIndex}-${headerIndex}`,
+                        )}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.table.rows.map((row, rowIndex) => (
+                    <tr key={`row-${blockIndex}-${rowIndex}`}>
+                      {row.map((cell, cellIndex) => (
+                        <td key={`cell-${blockIndex}-${rowIndex}-${cellIndex}`}>
+                          {renderInlineMarkdown(
+                            cell,
+                            `cell-${blockIndex}-${rowIndex}-${cellIndex}`,
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            );
+          }
+
+          if (block.type === "list") {
+            return (
+              <ul className="chat__list" key={`list-${blockIndex}`}>
+                {block.items.map((item, itemIndex) => (
+                  <li key={`list-${blockIndex}-${itemIndex}`}>
+                    {renderInlineMarkdown(item, `list-${blockIndex}-${itemIndex}`)}
+                  </li>
+                ))}
+              </ul>
+            );
+          }
+
+          return (
+            <p className="chat__message-text" key={`paragraph-${blockIndex}`}>
+              {block.text.split("\n").map((line, lineIndex) => (
+                <Fragment key={`paragraph-line-${blockIndex}-${lineIndex}`}>
+                  {lineIndex > 0 ? <br /> : null}
+                  {renderInlineMarkdown(
+                    line,
+                    `paragraph-${blockIndex}-${lineIndex}`,
+                  )}
+                </Fragment>
+              ))}
+            </p>
+          );
+        })}
+      </div>
+    );
   };
 
   return (
